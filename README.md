@@ -14,6 +14,8 @@ KVM / QEMU と libvirt を使用し、BCM ヘッドノードを含む 7 台の V
 | [製品資料](docs/references.md) | BCM マニュアルの索引と参照箇所 |
 | [BCM / Kubernetes バージョン対応](docs/bcm-kubernetes-versions.md) | Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の導入候補・認定表示と確認方法 |
 | [BCM インストール手順と設定記録](docs/bcm-installation.md) | 30 枚の画面に基づく操作順、設定値、Summary・Show config と未確認事項 |
+| [BCM ライセンス登録手順と実施記録](docs/bcm-licensing.md) | OS シェルでの登録、入力・成功表示、証明書更新と登録後の確認 |
+| [BCM の PXE・OS 展開手順](docs/bcm-pxe-provisioning.md) | 稼働後の確認、ライセンス・NIC・ディスクの前提、最初の 1 台と残り 5 台の展開手順 |
 | [検証状況](docs/validation.md) | 確認済み事項、未実施・未確認の項目、次の作業 |
 
 要件と環境構成を確認してから構築記録を参照してください。作業の進捗は「検証状況」に集約します。

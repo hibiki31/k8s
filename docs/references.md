@@ -18,7 +18,7 @@
 |---|---|---|
 | `installation-manual.pdf` | ヘッドノード導入、初回起動、通常ノードの起動、ライセンス | 表紙・目次と、後述の導入・構成・ライセンス関連本文 |
 | `containerization-manual.pdf` | Kubernetes構築、ネットワーク、ストレージ、Operator | 表紙・目次と、後述のKubernetes関連本文 |
-| `admin-manual.pdf` | BCMの管理操作、ソフトウェアイメージ、ノード展開、ディスク構成 | 表紙・目次。次の参照候補は下表に記載 |
+| `admin-manual.pdf` | BCMの管理操作、ソフトウェアイメージ、ノード展開、ディスク構成 | 表紙・目次と、[PXE 手順](bcm-pxe-provisioning.md#根拠と適用範囲) に示すディスク設定・識別・インストールモード・ログの本文 |
 | `user-manual.pdf` | クラスタへのログイン、環境モジュール、MPI、ジョブ実行 | 表紙・目次。利用者向け操作が必要になった段階で参照 |
 | `developer-manual.pdf` | BCM Python API、監視データの収集・アクション | 表紙・目次。自動化や監視拡張が必要になった段階で参照 |
 | `upgrade-manual.pdf` | BCMの並行移行・インプレース更新、関連アプリケーションの更新 | 表紙・目次。更新検証を行う段階で参照 |
@@ -54,6 +54,16 @@
 | ライセンスの有効性 | `verify-license verify` | §4.2.2 p.61 |
 | BCMソフトウェアの版 | `cmsh` の `main` モードで `versioninfo` | §4.2.3 pp.61-62 |
 
+### ライセンスの取得と登録
+
+2026-09-22 に [NVIDIA のライセンス案内](https://docs.nvidia.com/base-command-manager/bcm-licensing-and-support/)（ページ更新日 2026-09-04）を確認。現在の無償ライセンスはノード数無制限、各システム最大 8 アクセラレータで、CPU のみのクラスタにも利用できる。組織の自社利用が対象で、Enterprise Support は含まない。既定の期間は 1 年、更新申請が可能。ISO 同梱の 2 ノード制限と区別する。本利用者への権利付与・承認を確認したものではない。
+
+プロダクトキー未取得の場合は [NVIDIA Enterprise Account Registration](https://enterpriseproductregistration.nvidia.com/?LicType=Eval&ProductFamily=BCM) から申請し、権利付与メール受領後に [NVIDIA Licensing Portal](https://ui.licensing.nvidia.com/) の `Entitlements` → `Base Command Manager` → 該当行の `Actions` → `Generate key` でキーを取得する。公式案内のメール受領目安は通常 2 営業日。企業メール・会社名の照合条件も案内に従う。
+
+登録コマンドは **BCM ヘッドノードの root の OS シェル**で実行する。cmsh 内では `request-license` は認識されない。2026-09-22 の利用者による登録操作、実際の入力順、成功表示、証明書更新、登録後の照会は [BCM ライセンス登録手順と実施記録](bcm-licensing.md) にまとめた。ライセンスの現在値・進捗は [検証状況](validation.md) を参照する。
+
+手順の根拠: `input/10-bcm-installer-manual/installation-manual.pdf`、BCM 11 / Revision `47eff3c` / 2026-09-21、§4.3.2–4.3.4 pp.62–66、§4.3.7 pp.67–68（PDF 通し番号と紙面番号が一致）。一般的な無償ライセンスの説明と、今回発行された種別・上限・期間を区別し、実際の表示を優先して記録する。
+
 ## Kubernetes構築の根拠
 
 参照資料: `input/10-bcm-installer-manual/containerization-manual.pdf`
@@ -83,7 +93,7 @@ Multusの導入方法・基本CNIとの組み合わせ・セカンダリNIC設�
 
 ## OS展開の詳細化時に参照する章
 
-`input/10-bcm-installer-manual/admin-manual.pdf` の目次から確認した参照候補です。この一覧の本文確認と、本環境向け手順への具体化は今後行います。
+`input/10-bcm-installer-manual/admin-manual.pdf` の参照箇所です。2026-09-22 にディスク設定・PXE・識別・インストールモード・ログの本文を確認し、[本環境向け PXE 手順](bcm-pxe-provisioning.md) に具体化しました。§9.4 のパッケージ管理は引き続き参照候補です。実機で設定変更や展開を実行した結果ではありません。
 
 | 確認したい事項 | 章・開始PDFページ |
 |---|---|
