@@ -8,7 +8,7 @@
 - `default-image` が存在し、カーネルは `6.8.0-106-generic`、ロックなし。ヘッドに `boot` と `provisioning` ロールがある。実際のイメージ転送・起動成功は未確認。
 - 既定の `node001`～`node006` は全台 `DOWN, unassigned`、MAC 未登録。`device newnodes` に待機中のノードはない。この状態だけで VM の電源状態は断定しない。
 - 同日夜に [ライセンス登録](bcm-licensing.md) を完了し、ヘッドを含む 7 台を扱えることを確認した。現在値は [検証状況](validation.md) を参照。最初の 1 台を確認してから残りへ進む順序は、展開設定を確かめるために維持する。
-- ヘッドの NIC と MAC の対応が以前の接続計画と異なる。外部疎通は成功しているため、実際の libvirt 接続と照合してから修正の要否を判断する。
+- ヘッドの NIC と MAC の対応は、利用者提供の libvirt 出力と照合済み。当初資料の MAC 対応を訂正し、現在の NIC 設定は維持する。cp1 の同一内部ネットワークへの接続定義と停止状態も確認した。詳細は [仮想化ホスト側の確認](environment.md#仮想化ホスト側の接続確認) を参照。
 - `default` カテゴリは `newnodeinstallmode=FULL`、`installmode=AUTO`。新規ノードはディスクの再作成を伴う。`AUTO` も不一致時には `FULL` になるため、データ保護の代わりにはならない。
 
 ## 1. 仮想化ホストで接続とディスクを確認する
@@ -19,7 +19,9 @@
 virsh domiflist tk8s-bcm
 virsh domiflist tk8s-bcm --inactive
 virsh domiflist tk8s-cp1
+virsh domstate tk8s-cp1
 virsh domblklist tk8s-cp1 --details
+virsh domblkinfo tk8s-cp1 vda
 virsh dumpxml tk8s-cp1
 virsh net-dumpxml tk8s-internal
 ```
@@ -32,7 +34,7 @@ virsh net-dumpxml tk8s-internal
 - `tk8s-cp1` の OS ディスクが virtio の `vda`、容量 128 GiB であること。対象ディスクの内容は展開で消去される。
 - ワーカーは `domblklist` と XML で OS 用と TopoLVM 用のバックエンドを識別する。両方 256 GiB のため、容量だけでは識別できない。追加ディスクが `vdb` であることも推測で決めない。
 
-実接続が計画と異なっていても内部・外部の用途が正しく成立している場合は、接続記録を更新する。内部 NIC が外部ネットワークへ接続されている場合は、仮想化ホストのコンソールを確保して接続を修正してから先へ進む。本調査では物理ホストへの接続・修正は行っていない。
+2026-09-22 の利用者提供出力で、BCM の内部・外部 NIC と cp1 の接続、cp1 の停止状態、`vda` 1 台、内部ネットワークの DHCP 定義なしを確認した。ヘッドの接続は実測と一致し、NIC 設定の交換は不要。容量・起動設定・ヘッドの永続構成は今回の出力では未確認なので、残る確認を上のコマンドや VM 設定画面で行う。`domblkinfo` の Capacity は仮想容量であり、qcow2 の実消費量とは区別する。本調査では物理ホストへの接続・修正は行っていない。
 
 ## 2. 最初の 1 台を BCM の既存定義へ登録する
 
