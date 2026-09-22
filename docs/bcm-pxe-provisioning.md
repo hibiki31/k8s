@@ -233,9 +233,86 @@ DHCP 応答がなければ内部 L2 接続・競合 DHCP・ファイアウォー
 
 ## 6. 最初の 1 台の確認後に残り 5 台へ進む
 
+次は **tk8s-cp2 / node002 の事前確認 → 登録 → PXE → 起動後確認** を行い、合格後に cp3、ワーカー 3 台へ進む。以下は 2026-09-23 に整理した未実行の手順。node001 の確認済み結果は [ホスト名による SSH と OS 内部の確認](#2026-09-23-ホスト名による-ssh-と-os-内部の確認) を引き継ぎ、再展開しない。VM・MAC・IP の正本は [環境構成](environment.md#2026-09-22-の稼働後確認)、容量は [VM 一覧](vm-list.md) を参照する。
+
 ヘッドを含む 7 台を扱えるライセンスは適用・確認済み。期間を空けて作業する場合は `cmsh -c 'main licenseinfo'` と `verify-license verify` で再確認する。出力にはライセンス識別情報があるため、そのまま公開しない。
 
-各 VM の MAC を実接続と照合してから、手順 2 と同様に `node002`～`node006` へ登録する。対応する VM・MAC・IP は [環境構成](environment.md#2026-09-22-の稼働後確認) に集約する。
+### 6.1. cp2 の接続・ディスク・起動設定を確認する
+
+**KVM / libvirt 物理ホスト上**で、対象 VM を管理できる権限で実行する。BCM ヘッド上のシェルとは区別する。
+
+```bash
+virsh domstate tk8s-cp2
+virsh domiflist tk8s-cp2 --inactive
+virsh domblklist tk8s-cp2 --inactive --details
+virsh domblkinfo tk8s-cp2 vda
+virsh dumpxml tk8s-cp2 --inactive
+virsh domiflist tk8s-bcm
+virsh domiflist tk8s-bcm --inactive
+virsh net-dumpxml tk8s-internal
+```
+
+期待結果は cp2 が停止中、内部 NIC が環境構成の MAC と一致し `tk8s-internal` に接続、OS ディスクが `vda` 1 台・128 GiB であること。`domblklist` で `vda` が見つからなければ後続へ進まず、ディスクの対応を確認する。XML と VM 設定画面で UEFI・Secure Boot 無効・内部 NIC の PXE 優先も確認する。ヘッドの現在・次回起動時の内部接続が一致し、内部ネットワークに libvirt の DHCP 定義がないことを照合する。
+
+`--inactive` は次回起動に使う定義を確認する指定（[libvirt virsh 公式資料](https://www.libvirt.org/manpages/virsh.html#domiflist)、同 `domblklist` / `dumpxml` 節）。物理ホストの libvirt バージョンは未記録。既に稼働中なら、上書き登録・強制停止をせず、現在の構成と展開済みかを先に確認する。
+
+### 6.2. cp2 を登録して PXE 起動する
+
+**BCM ヘッドノード上**の管理者シェルで実行する。まず読み取りで対象・カテゴリ・ディスク設定を照合する。
+
+```bash
+cmsh -c 'device list'
+cmsh -c 'category use default; get softwareimage; get newnodeinstallmode; get installmode; get disksetup'
+cmsh -c 'device use node002; get category; get disksetup; get installmode; get nextinstallmode'
+cmsh -c 'device; interfaces node002; list'
+```
+
+`node002` が未展開・MAC 未登録で、カテゴリ `default`、イメージ `default-image`、BOOTIF が環境構成の cp2 用 IP / `internalnet` であることを確認する。ノード固有の上書きがある場合はカテゴリ設定だけで展開動作を判断しない。ディスク設定は [手順 3](#3-os-ディスクと-swap-の扱いを確認する) に従い、実際の OS ディスクに適用されることを確認する。
+
+物理ホストで内部 MAC が一致し、cp2 が停止中であることを確認できた場合に登録する。次の MAC は環境構成の公開可能な検証用値を用いたコマンド例であり、今回の実測値ではない。
+
+```bash
+cmsh -c 'device use node002; set mac 52:54:00:65:00:03; commit'
+cmsh -c 'device list'
+cmsh -c 'device; interfaces node002; list'
+```
+
+**物理ホスト上**で cp2 だけを起動する。新規ノードの FULL 展開は OS ディスクを初期化するため、対象に保存すべきデータがないことが前提。
+
+```bash
+virsh start tk8s-cp2
+```
+
+VM コンソールで内部 NIC の UEFI IPv4 PXE → `AUTO` → `Confirm node` と進む。`node002`・登録 MAC・BOOTIF の予定 IP が一致するときだけ `Accept` で進める。違うノードが表示されたら進めない。識別できない場合は [手順 4](#4-tk8s-cp1-だけを-pxe-起動する) の MAC 照合を行う。
+
+### 6.3. cp2 の起動後を確認して cp3 へ進む
+
+**BCM ヘッドノード上**で確認する。
+
+```bash
+cmsh -c 'device list'
+cmsh -c 'device synclog node002'
+ssh root@node002
+```
+
+SSH のホスト鍵が未登録なら、VM コンソールで指紋を取得して照合してから登録する。node001 で成功したことは他ノードの鍵登録・認証成功を保証しない。確認方法とノード内部のコマンドは [手順 5](#5-展開と起動を確認する) を適用し、以下も **接続先 node002 上**で実行する。
+
+```bash
+findmnt -no SOURCE,FSTYPE /
+curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w 'HTTPS status: %{http_code}\n' https://docs.nvidia.com/
+```
+
+期待するノード名・IP、OS ディスク上のルート、`UP`、同期完了、失敗サービスなし、外部名前解決と HTTPS 接続を確認して記録する。失敗時は出力と終了コードを保存して原因を確認する。この段階の swap 有効は既存構成として記録し、Kubernetes 構築後・再起動後に無効化を確認する。
+
+合格後、6.1～6.3 の VM を `tk8s-cp3`、BCM 名を `node003` に置き換えて繰り返す。登録 MAC・確認 IP は環境構成の cp3 行を用い、cp2 の値を流用しない。
+
+### 6.4. ワーカーの追加ディスクを保護して展開する
+
+各ワーカーにも 6.1 の読み取り確認を適用する。OS 用と TopoLVM 用はどちらも 256 GiB のため、容量だけで判断せず、`domblklist` のバックエンドと XML の `source` / `target` を作成時の用途と照合する。追加ディスクを `vdb` と推測しない。用途を確定できない場合は PXE 起動を保留する。
+
+**BCM ヘッドノード上**で、停止中の対象ノードの `disksetup` を [手順 3](#ディスク候補の意味) に従って確認する。OS ディスクに限定する必要がある場合は対象ノードだけを編集し、`get disksetup` で追加ディスクが初期化対象に含まれないことを確認してから `commit` する。共有カテゴリの不用意な変更は避ける。
+
+各 VM の内部 NIC の MAC を実接続と照合してから、手順 2 と同様に `node004`～`node006` へ登録する。Multus 側の MAC を登録しない。
 
 ワーカーは現在の連続 IP を計画に合わせて変更する。以下は **BCM ヘッドノード上**の未実行例（VM が停止中、既存の IP 使用がないことを確認した後）。
 
@@ -248,6 +325,8 @@ cmsh -c 'device; interfaces node006; use BOOTIF; set ip 172.30.65.23; commit'
 展開対象ディスクと対応を確認した台から順に PXE 起動し、各台の結果を記録する。ワーカーの Multus 用 NIC を PXE NIC として登録しない。OS 起動後に追加ディスクが未初期化のまま残っていることを確認し、LVM / TopoLVM 作業は後続で行う。
 
 Kubernetes 等を導入した後は、BCM イメージとの同期や再展開時の除外設定も検討する。`AUTO` や `NOSYNC` という名前だけでローカル変更・データが保持されると判断しない。
+
+作業日時・実行者・対象ノード・コマンドと画面操作・結果・失敗箇所を各台ごとに記録し、原本は `input/` に保存する。XML に含まれる実パスや UUID、SSH 指紋、ライセンス識別情報は公開文書へそのまま転記しない。6 台の合格を確認した時点で [検証状況](validation.md) を更新し、Kubernetes の役割配置・アドレス設計の確定へ進む。
 
 ## 2026-09-22: 容量・登録結果・swap の調査記録
 
@@ -357,6 +436,24 @@ cmsh -c 'device use node001; get installmode; get nextinstallmode; get bootloade
 本書に概念図・モード比較・今回の実測との対応を追記し、製品資料索引から参照できるようにした。公開前確認は [保守手順](repository-maintenance.md#保存前の確認コミット手順) を今回の 2 文書に適用する。証跡は Git 差分・履歴、上記ローカル資料、`input/60-install-by-pxe/2026-09-23-pxe-mode-check.txt`。未解決の実環境検証項目は [検証状況](validation.md) を維持する。
 
 共有作業領域で別作業の変更も検出したため、一時 `GIT_INDEX_FILE` に `git read-tree` で HEAD を読み込み、今回の 2 文書の差分だけを `git hash-object` / `git update-index` で登録して確認した。共有インデックスはこの準備で変更していない。
+
+## 2026-09-23: 次の作業手順の整理
+
+目的は、node001 の確認済み範囲を踏まえ、次に利用者が実行する cp2 以降の手順を具体化すること。実行者は Codex（読み取り専用レビューのサブエージェントを含む）。作業場所はリポジトリのルートで、文書編集・ローカルコミットの権限を使用する。対象製品は既存記録の BCM 11 / Ubuntu 24.04、作業ツールは Git 2.43.0 / Python 3.12.3。`date -Iseconds` で 00:35 JST を確認した。操作ごとの時刻と編集ツールの版は未記録。
+
+実行順と結果:
+
+1. `pwd`、`git status --short --untracked-files=all`、`rg --files -g 'AGENTS.md' -g 'README.md' -g 'docs/**' -g '.gitignore'` で作業場所・開始時の変更なし・対象文書を確認した。README と AGENTS、検証状況・環境構成・VM 一覧・要件・PXE 手順・保守記録を `cat` / `sed -n` で読み、`rg -n` で関連見出し・未確認事項を検索した。関連するライセンス・Kubernetes バージョン文書の検索結果も確認した。一括表示の省略箇所は範囲指定で読み直した。`.gitignore` と `git log -3 --format='%h %s'` も確認した。
+2. サブエージェントが同じ索引・方針と、検証状況・環境構成・VM 一覧・PXE 手順を `pwd`、`rg --files`、`cat`、`rg -n`、`sed -n` で独立確認した（終了コードはいずれも 0）。次の対象が残り 5 台であること、ワーカーの同容量ディスクの識別とホスト名 SSH の確認が必要なことを照合した。編集・実環境操作は委任していない。
+3. `git --version`、`python3 --version`、`date -Iseconds` と `rg --files input/40-bcm-pxe input/60-install-by-pxe` を実行した。`sed -n` で `input/60-install-by-pxe/2026-09-23-node001-os-check.txt`、同 `2026-09-23-hostname-ssh-check.txt`、同 `2026-09-23-pxe-mode-check.txt` を確認し、既存の OS・SSH・HTTPS・モード設定の記録と照合した。公開可否未確認の UUID・解決先アドレス等は追記していない。
+4. Web 閲覧ツールで [libvirt virsh 公式資料](https://www.libvirt.org/manpages/virsh.html) の `domiflist` / `domblklist` と `--inactive` を確認した（閲覧日 2026-09-23、Web 版のリビジョン未記録）。実ホストに導入された版・実際の出力は今回未確認。
+5. `apply_patch` で本書の手順 6 を具体化し、検証状況の次の作業からリンクした。新規文書はなく、README の既存索引を維持した。6.1～6.4 のコマンドは未実行例であり、今回のユーザー操作の共有もない。実環境へ接続していないため、構築の進捗は変更していない。
+6. `git diff --check`・`git diff --stat`・status と、Python の `pathlib` / `re` / `unicodedata` による 2 文書の相対リンク・見出しアンカー・コードブロック確認は成功した。Python から `git var GIT_AUTHOR_IDENT` / `GIT_COMMITTER_IDENT` を読み、実値を表示せず公開用名義への置き換えが必要と確認した。既存のパスワード欄は `<PASSWORD>` だった。サブエージェントも `git diff -- docs/bcm-pxe-provisioning.md docs/validation.md` で差分をレビューし、手順の順序・前提・未実行の区別に重大な問題がないことを確認した。
+7. Git 管理領域への書き込み権限を伴う `git add docs/bcm-pxe-provisioning.md docs/validation.md` に成功した。`git diff --cached --name-status` / `--check` / 全差分を読み、`git diff --exit-code --` で作業ツリーとの一致を確認した。`git grep --cached -n -i -E 'password|token|secret|Authorization|PRIVATE KEY|https?://|@'` を対象 2 文書に適用し、文脈・ファイル名・公開用名義も含めて確認した。`git ls-files -- input` は空、`git check-ignore -v -- input/60-install-by-pxe/2026-09-23-node001-os-check.txt` は `/input/` の除外を示した。公開可能と確認済みの検証値と公式 URL 以外に識別・接続情報や第三者原本の追加はなく、追加の削除・匿名化は不要だった。この確認結果の追記後も同じ確認を繰り返す。
+
+保存時は [保守手順](repository-maintenance.md#保存前の確認コミット手順) を本書と `docs/validation.md` に適用する。Markdown の相対リンク・見出しアンカー・コードブロックの対応、差分の空白、手順と設定表・進捗の整合を確認する。ステージ対象はこの 2 文書に限定し、ステージ済み差分・補助検索・`input/` の非追跡と除外を確認してからローカルコミットする。名義は同手順の公開用の汎用名義を用いる。証跡は本タスクのツール出力と Git 差分・履歴。実環境の新規ログはない。
+
+期待結果は、物理ホストと BCM での実行場所、登録・起動前の条件、各台の合格条件を区別して次の操作を提示できること。残り 5 台の実接続・ディスク・展開結果は未確認のままとし、利用者が実行した結果を受けて追記する。公開・push と履歴全体の監査は今回の対象外。コミット結果・公開情報チェック結果・残変更は完了報告に記載する。
 
 ## 根拠と適用範囲
 
