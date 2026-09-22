@@ -141,10 +141,10 @@ tail -F /var/log/node-installer /var/log/cmdaemon
 cmsh -c 'device list'
 cmsh -c 'device synclog node001'
 ping -c 3 172.30.65.11
-ssh root@172.30.65.11
+ssh root@node001
 ```
 
-SSH では接続先ホスト鍵を確認する。ヘッドに設置した利用者の SSH 公開鍵が、ソフトウェアイメージや計算ノードにも配布済みとは限らない。ログインできない場合は鍵配布と sshd の設定を別途確認する。
+SSH は BCM ヘッドからホスト名 `node001` を使う。2026-09-23 に既存ホスト鍵の照合と公開鍵認証で接続できた（[確認記録](#2026-09-23-ホスト名による-ssh-と-os-内部の確認)）。IP 指定時の未登録ホスト鍵エラーとは区別する。SSH では接続先ホスト鍵を確認する。ヘッドに設置した利用者の SSH 公開鍵が、ソフトウェアイメージや計算ノードにも配布済みとは限らない。ログインできない場合は鍵配布と sshd の設定を別途確認する。
 
 **展開後の node001 上**で確認する:
 
@@ -241,13 +241,41 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 root@172.3
 
 結果は終了コード 255。接続先 IP に対応する ED25519 ホスト鍵が未登録のため、ホスト鍵検証で停止した。ユーザー認証前の停止であり、パスワード・公開鍵認証の失敗を示すものではない。引用符内のノード上コマンドは未実行。`known_hosts` の変更や検証の無効化は行っていない。抽出ログと失敗理由は `input/60-install-by-pxe/2026-09-23-post-pxe-check.txt` に保存した。
 
-### 次の確認と記録の保存
+### 初回調査時点の残課題と記録の保存
+
+以下は IP 指定の SSH が停止した時点の案内。後続の [ホスト名接続の確認](#2026-09-23-ホスト名による-ssh-と-os-内部の確認) で SSH・OS 内部・外部疎通の確認は完了したため、コンソールでのホスト鍵登録は今回不要になった。
 
 VM コンソールの Node Info 画面から `Alt+F2` でコンソールを開き、管理者としてログインして [手順 5](#5-展開と起動を確認する) のノード上コマンドを実行する。SSH を使う場合は、コンソールで `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` により指紋を取得し、ヘッドからの接続時に表示される指紋と照合して登録する。これは次の未実行手順である。
 
 cp1 のルートのマウント元、実パーティション、swap、失敗サービス、名前解決・外部疎通を確認してから残り 5 台へ進む。現在の 16G swap 定義を構築後に削除するためだけのレイアウト変更は行わず、[Kubernetes と swap](#kubernetes-と-swap) の扱いを引き継ぐ。R-01 全体は 6 台が対象なので、今回の 1 台の起動だけで完了にはしない。
 
 文書整理は本書・環境構成・検証状況を対象とし、画像を個別に目視確認して要約した。画像原本とログは `input/` に保持する。公開可否未確認のヘッド実ホスト名は転記しない。[保守手順](repository-maintenance.md#保存前の確認コミット手順) に従い、この 3 文書のリンク・コードブロック・ステージ済み差分・公開情報を確認してローカルコミットする。証跡は本節、Git 差分・履歴と上記画像・抽出ログ。OS 内部の確認と残り 5 台の展開は未完了。
+
+## 2026-09-23: ホスト名による SSH と OS 内部の確認
+
+利用者から `ssh node001` でログインできるとの報告を受け、00:17 JST に BCM ヘッドの root シェルから再確認した。前回の IP 指定の失敗を、ホスト名指定でも接続できないという意味には扱わない。対象は展開済み `node001`、OS / カーネルは [環境構成](environment.md#2026-09-23-node001-の起動後確認) のとおり。
+
+まず以下を実行した。`BatchMode=yes` で対話認証を避け、`StrictHostKeyChecking=yes` でホスト鍵検証を維持した。
+
+```bash
+ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 node001 'hostname; uname -r; ip -br addr; ip route; findmnt -no SOURCE,FSTYPE /; lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS; swapon --show; free -h; findmnt --fstab --types swap; systemctl --failed --no-pager; getent ahostsv4 docs.nvidia.com'
+```
+
+SSH は終了コード 0。ノード名・予定 IP、ディスク上のルート、実パーティション・有効な swap、失敗ユニットなし、外部名の解決を確認した。実測値は [環境構成](environment.md#2026-09-23-node001-の起動後確認) に集約。前回ソフトウェアイメージ内にあった `/swap.img` エントリーに対し、展開後ノードの `fstab` の swap 行はパーティションを指す UUID 形式で、`swapon` にも `/dev/vda2` のみが表示された。UUID の実値は公開文書へ転記しない。
+
+次に認証方式と外部 HTTPS 到達性を確認した。
+
+```bash
+ssh -v -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 node001 'id -un; curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w "HTTPS status: %{http_code}\n" https://docs.nvidia.com/'
+```
+
+既存の `/root/.ssh/known_hosts` にある `node001` の ED25519 ホスト鍵に一致し、`publickey` 認証で root として接続した。どの操作でホスト名の鍵が登録されたかは今回調査していない。鍵の追加・削除、SSH 設定変更、検証の無効化は不要だった。`curl` は終了コード 0、HTTP 200。確認範囲はこの宛先への IPv4 HTTPS 接続であり、全リポジトリ・全プロトコルの到達性を保証するものではない。
+
+証跡は `input/60-install-by-pxe/2026-09-23-node001-os-check.txt` と `input/60-install-by-pxe/2026-09-23-hostname-ssh-check.txt`。後者は Python の `subprocess.run` で SSH の標準出力と、ホスト鍵照合・認証成功に関するデバッグ行のみを抽出して保存した。秘密鍵・公開鍵本文は記録していない。
+
+これにより cp1 の初回展開後の基本確認を終え、[手順 6](#6-最初の-1-台の確認後に残り-5-台へ進む) に沿って残り 5 台の準備へ進める。swap は Kubernetes 構築前の現在有効であり、BCM による構築後・再起動後の無効化は今後確認する。今回、swap 無効化・ディスク変更・再起動は行っていない。
+
+本書・環境構成・検証状況を更新し、[保守手順](repository-maintenance.md#保存前の確認コミット手順) に沿って 3 文書のリンク・コードブロック・ステージ済み差分・公開情報を確認してローカルコミットする。原本は `input/` のまま保持し、実 UUID・外部解決先アドレス・ホスト鍵の実値は文書へ転記しない。残課題は 5 台の展開、再起動検証と Kubernetes 構築以降の確認。
 
 ## 根拠と適用範囲
 

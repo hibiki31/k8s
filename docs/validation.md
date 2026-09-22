@@ -2,7 +2,7 @@
 
 最終整理日: 2026-09-23
 
-初期資料 `docs/vm-list.md` の準備・検証状況、`input/` に保存された証跡、および 2026-09-22 の利用者提供ネットワーク構成をもとに整理しています。同日夜には BCM ヘッドノード上で読み取り専用の実機調査を行いました。証跡は `input/40-bcm-pxe/2026-09-22-headnode-check.txt`。その後、利用者がライセンスを登録し、23:26 JST に登録後の状態を確認しました（証跡: `input/50-bcm-license/2026-09-22-post-registration-check.txt`）。9 月 23 日には利用者提供の PXE 画像 4 枚を確認し、ヘッド上で node001 の UP と同期完了を再照会しました。SSH は未登録ホスト鍵の検証で停止し、ノード内コマンドは未実行です。エージェントによる設定変更・VM 起動・PXE 再展開は行っていません。[初回展開記録](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) を参照。
+初期資料 `docs/vm-list.md` の準備・検証状況、`input/` に保存された証跡、および 2026-09-22 の利用者提供ネットワーク構成をもとに整理しています。同日夜には BCM ヘッドノード上で読み取り専用の実機調査を行いました。証跡は `input/40-bcm-pxe/2026-09-22-headnode-check.txt`。その後、利用者がライセンスを登録し、23:26 JST に登録後の状態を確認しました（証跡: `input/50-bcm-license/2026-09-22-post-registration-check.txt`）。9 月 23 日には利用者提供の PXE 画像 4 枚を確認し、ヘッド上で node001 の UP と同期完了を再照会しました。最初の IP 指定 SSH は未登録ホスト鍵の検証で停止しましたが、00:17 JST にホスト名 `node001` で接続し、ノード内コマンドと外部 HTTPS を確認しました。エージェントによる設定変更・VM 起動・PXE 再展開は行っていません。[初回展開記録](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) を参照。
 
 「確認済み（初期記録）」は既存の記載を引き継いだものです。「作成済み（利用者提供情報）」は利用者から完了と報告された構成で、今回実環境で確認したものではありません。「画面確認」は保存された画面で確認できる範囲、「未実施」は初期資料で今後の作業とされた項目、「未確認」は完了を示す証跡がまだ整理できていない項目です。「実機確認」は今回のヘッドノード上の照会・疎通で確認した範囲です。「提供ログ確認」は利用者が物理ホストで実行した出力を読んだ結果であり、エージェントの直接実行とは区別します。
 
@@ -13,22 +13,22 @@
 | 7 台の VM 作成と UEFI 起動 | 確認済み（初期記録） | 初期 `docs/vm-list.md` の記載。割り当ては [VM 一覧](vm-list.md) を参照 |
 | 3 つの仮想ネットワークと 11 本の NIC 接続 | 作成済み（利用者提供情報） | 2026-09-22 提供。`input/20-network/2026-09-22-network-notes.md` に保存。[環境構成](environment.md#ネットワーク) に整理。libvirt 側 NAT・DHCP/DNS 不提供、ワーカー追加 NIC の PXE ROM 無効も提供情報に基づく |
 | BCM / cp1 の libvirt 接続と内部ネットワーク | 提供ログ確認 | BCM の内部・外部 MAC と接続先がヘッド実測に一致。cp1 も同じ内部ネットワークの定義。内部ネットワークは DHCP 定義なし・DNS 無効。[確認範囲と証跡](environment.md#仮想化ホスト側の接続確認) |
-| cp1 の電源・OS ディスク | 起動後画面・UP 確認 | 展開前は停止中・vda 1 台 128 GiB。9 月 23 日は起動後画面で virtio 128G を認識。実パーティション・マウント元、UEFI・Secure Boot の設定値は未確認。[起動後確認](environment.md#2026-09-23-node001-の起動後確認) |
+| cp1 の電源・OS ディスク | 起動後画面・UP 確認 | 展開前は停止中・vda 1 台 128 GiB。9 月 23 日は起動後画面で virtio 128G を認識。SSH で実パーティションと `/dev/vda3` の XFS ルートを確認。UEFI・Secure Boot の設定値は未確認。[起動後確認](environment.md#2026-09-23-node001-の起動後確認) |
 | PXE 対象 6 台の DHCP 要求送信 | 確認済み（初期記録） | 初期 `docs/vm-list.md` の記載。BCM からの応答・OS 展開成功までは示していない |
 | ワーカーの追加 NIC・ディスク | 確認済み（初期記録） | QEMU での認識を確認したとの記載。ゲスト OS 内での利用確認とは区別する |
 | BCM インストールメディアの整合性チェック | 画面確認 | [BCM インストール記録](bcm-installation.md) の S05 に成功表示あり |
 | BCM インストーラーでの設定 | 画面確認 | 30 枚を [BCM インストール手順と設定記録](bcm-installation.md) に整理。S22 の Summary と S23～S30 の Show config まで確認 |
 | BCM のインストール完了・再起動後の稼働 | 実機確認 | 利用者の導入完了報告に加え、Ubuntu と CMDaemon の稼働を確認。DHCP・DNS・HTTP・NFS・SSH・NTP は active。OS / パッケージ版は [環境構成](environment.md#2026-09-22-の稼働後確認)。インストーラーの完了ログ自体は未取得 |
-| SSH 公開鍵・Codex CLI | 設置を実機確認 | authorized_keys の存在・非空・権限と CLI 0.155.1 の起動を確認。鍵認証での別接続、計算ノードへの鍵配布は未検証 |
+| SSH 公開鍵・Codex CLI | 設置を実機確認 | authorized_keys の存在・非空・権限と CLI 0.155.1 の起動を確認。ヘッドから node001 へ公開鍵認証での SSH 成功。利用者鍵の配布先・他ノードへの接続は未検証 |
 | OS 全体のサービス状態 | 失敗ユニットあり | 22 時台は shorewall6 の 1 件（IPv6 interfaces 未定義、IPv4 shorewall は active）。23:26 の確認では fwupd-refresh も失敗し、計 2 件。fwupd-refresh の原因とライセンス登録との関連は未調査。CMDaemon は active |
 | BCM のライセンス条件 | 登録完了・実機確認 | Free / Advanced、Licensed nodes は使用 1／上限 10。ヘッドを含む 7 台の要件を満たす。`verify-license verify` は終了コード 0、確認時点で有効期間内。正確な有効期間は Git 管理外の証跡に保持し、公開文書では省略する。登録前の Temporary / 上限 2 から更新。[登録手順と証跡](bcm-licensing.md) |
 | ライセンス登録後の証明書 | ヘッド・配信元を実機確認 | cmd は active、ヘッド UP。default-image と node-installer の cluster.pem がヘッドと一致。計算ノードでの新証明書取得は PXE 展開時に確認する |
 | ゲストの IP・ゲートウェイ・DNS 設定 | ヘッド実機確認・BCM / cp1 接続照合済み | ヘッドの IP・経路、外部ゲートウェイへの ping、外部名前解決・NTP 同期を確認。NIC/MAC は当初表と逆だったが、提供された libvirt 出力が実測と一致したため対応表を訂正。node001 の MAC は登録・再照会済み、他の 5 台は未登録。ワーカー用定義の IP は予約値と不一致。[実測と対応案](environment.md#2026-09-22-の稼働後確認) |
 | BCM による内部ネットワークの DHCP・PXE 提供 | node001 の PXE・同期完了・起動確認 | PXE メニュー、node-installer での識別と FULL 展開、予定 IP、起動後画面を確認。ヘッド上で rsync 完了と UP を再照会。DHCP パケット自体は未採取。[実施記録](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) |
-| ヘッド・計算ノードのディスクレイアウト | ヘッドと展開設定を実機確認 | ヘッドは vda 上で稼働。default カテゴリの XML と新規 FULL / 通常 AUTO を確認。cp1 は提供ログで vda 1 台を確認。他の計算ノードのディスク実体は未確認。cp1 の既存候補リストは使用可能。ワーカーは OS 用の識別が必要。swap 16G は現設定のまま。BCM の Kubernetes セットアップに無効化処理を確認したが、動作は未検証。[展開手順](bcm-pxe-provisioning.md) |
+| ヘッド・計算ノードのディスクレイアウト | ヘッドと展開設定を実機確認 | ヘッドは vda 上で稼働。default カテゴリの XML と新規 FULL / 通常 AUTO を確認。cp1 は SSH で vda 1 台、EFI / swap / XFS ルートを確認。他の計算ノードのディスク実体は未確認。cp1 の既存候補リストは使用可能。ワーカーは OS 用の識別が必要。cp1 の swap 16G は実ノードで有効。BCM の Kubernetes セットアップに無効化処理を確認したが、動作は未検証。[展開手順](bcm-pxe-provisioning.md) |
 | CUDA 追加パッケージ | 選択画面確認 | S21・S22 で選択あり。GPU なし構成での選択理由と導入結果は未確認 |
-| 内部ネットワークから外部へのルーティング・NAT | ヘッドの設定を実機確認 | IPv4 forwarding と内部サブネットの MASQUERADE あり。計算ノードからの外部疎通は未確認 |
-| R-01: BCM による 6 台への OS 展開 | 1 / 6 台で初回展開・起動確認 | node001 は FULL 同期完了・起動後画面・UP を確認。OS 内部と外部疎通の確認は残る。残り 5 台は MAC 未登録・DOWN / unassigned。[実施記録と次の確認](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) |
+| 内部ネットワークから外部へのルーティング・NAT | ヘッド設定・cp1 の外部疎通を確認 | IPv4 forwarding と MASQUERADE の前回確認に加え、node001 のヘッド経由デフォルト経路・外部名前解決・IPv4 HTTPS の HTTP 200 を確認。他の 5 台は未確認 |
+| R-01: BCM による 6 台への OS 展開 | 1 / 6 台で初回展開・起動確認 | node001 は FULL 同期完了・起動後画面・UP を確認。ホスト名 SSH、XFS ルート、失敗ユニット 0 件、外部名前解決・HTTPS も確認済み。残り 5 台は MAC 未登録・DOWN / unassigned。[実施記録と次の確認](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) |
 | R-02: Kubernetes クラスタ構築・基本動作 | 未確認 | コントロールプレーン 3 台・ワーカー 3 台が目標。構築後・再起動後の swap 無効を確認する。[BCM 実装調査と選択肢](bcm-pxe-provisioning.md#kubernetes-と-swap) |
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
 | ワーカーの LVM 初期化 | 未実施 | 初期資料で今後実施と記載 |
@@ -38,8 +38,8 @@
 
 ## 次の作業
 
-1. 起動済みの cp1 で、コンソールまたはホスト鍵を照合した SSH から、ルートのマウント元・実パーティション・swap・失敗サービス・外部疎通を確認する。[起動後の確認手順](bcm-pxe-provisioning.md#5-展開と起動を確認する) を使用し、ヘッドの永続接続構成など未照合の設定も別途確認する。
-2. [PXE・OS 展開手順](bcm-pxe-provisioning.md) に従い、cp1 の起動後確認を終えた後、残りのノードの MAC 登録とワーカー IP の調整を行う。TopoLVM 用追加ディスクを保護し、全台の OS 展開・起動・外部疎通を確認する。shorewall6 の起動失敗は IPv6 の利用方針に合わせて解消し、fwupd-refresh の失敗原因も別途確認する。
+1. cp1 の [起動後の基本確認](bcm-pxe-provisioning.md#2026-09-23-ホスト名による-ssh-と-os-内部の確認) は完了。残り 5 台の NIC・OS ディスクと TopoLVM 用追加ディスクを物理ホスト上で識別する。ヘッドの永続接続構成など未照合の設定も別途確認する。
+2. [PXE・OS 展開手順](bcm-pxe-provisioning.md) に従い、残りのノードの MAC 登録とワーカー IP の調整を行う。TopoLVM 用追加ディスクを保護し、全台の OS 展開・起動・外部疎通を確認する。shorewall6 の起動失敗は IPv6 の利用方針に合わせて解消し、fwupd-refresh の失敗原因も別途確認する。
 3. Kubernetes のコントロールプレーン・etcd の配置と、[ネットワークのアドレス設計](requirements.md#構築前に確認する事項) を確定して構築し、各ノードの役割・Ready 状態と基本動作を確認する。
 4. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。
 
