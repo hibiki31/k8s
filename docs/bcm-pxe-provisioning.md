@@ -1,11 +1,11 @@
 # BCM による PXE・OS プロビジョニング
 
-確認日: 2026-09-22～23（JST）。BCM ヘッドノード上の読み取り専用調査と、BCM 11 の製品資料、利用者提供ログに基づく。node001 の [初回展開・起動](#2026-09-23-node001-の初回-pxeos-展開記録) と SSH・外部通信を確認済み。後続の共有では node002 の MAC 登録・INSTALLING 表示に続き、[UP 表示](#2026-09-23-node002-の-up-表示確認) を確認した。その後の [SSH・OS 内部確認](#2026-09-23-node002-の-ssh-と-os-内部の確認) で予定 IP・ディスク上のルート・外部 HTTPS を確認した。node002 の同期ログ自体は未共有。さらに [node003 の MAC 登録・UP](#2026-09-23-node003-の-nicmac-登録と-up-確認) を提供ログで確認した。node003 の OS 内部は未確認、ワーカー 3 台の展開とディスク変更の代替案は未実行。実際の進捗は [検証状況](validation.md)、ネットワークの実測値・割り当て計画は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照する。
+確認日: 2026-09-22～23（JST）。BCM ヘッドノード上の読み取り専用調査と、BCM 11 の製品資料、利用者提供ログに基づく。node001～003 の MAC 登録・UP の提供結果に続き、[3 台の直接確認](#2026-09-23-node001003-の-bcm-からの一括確認) で FULL 同期完了、SSH、OS 内部、外部 HTTPS を確認した。ワーカー 3 台の展開とディスク変更の代替案は未実行。実際の進捗は [検証状況](validation.md)、実測構成は [環境構成](environment.md#2026-09-23-node001003-の直接確認) を参照する。
 
 ## 今回確認した前提
 
 - CMDaemon、DHCP、DNS、HTTP、NFS が稼働。TFTP は `tftpd.socket` が UDP 69 を待ち受け、UEFI 用の `syslinux.efi` も存在する。`tftpd.service` 単体の `inactive` はソケット起動待ちの状態と区別する。
-- `default-image` が存在し、カーネルは `6.8.0-106-generic`、ロックなし。ヘッドに `boot` と `provisioning` ロールがある。9 月 23 日に `node001` のイメージ同期完了と起動後画面を確認した。node002 は後続の SSH で起動を確認したが、同期ログは未共有。残り 4 台は未確認。
+- `default-image` が存在し、カーネルは `6.8.0-106-generic`、ロックなし。ヘッドに `boot` と `provisioning` ロールがある。9 月 23 日の一括確認で node001～003 の FULL 同期完了と起動後の OS を直接確認した。ワーカー 3 台は未展開。
 - 初回調査では全台 MAC 未登録だったが、9 月 23 日の実機確認では node001 が UP。後続の利用者提供一覧では node002 の MAC 登録・INSTALLING を確認し、さらに UP への移行を確認した。その後 node003 も MAC 登録・UP を提供ログで確認し、node004～node006 は MAC 未登録・DOWN / unassigned。初回の `device newnodes` に待機中のノードはなかった（後続調査では未再照会）。BCM の一覧だけで VM の電源状態は断定しない。
 - 9 月 22 日夜に [ライセンス登録](bcm-licensing.md) を完了し、ヘッドを含む 7 台を扱えることを確認した。現在値は [検証状況](validation.md) を参照。最初の 1 台を確認してから残りへ進む順序は、展開設定を確かめるために維持する。
 - ヘッドの NIC と MAC の対応は、利用者提供の libvirt 出力と照合済み。当初資料の MAC 対応を訂正し、現在の NIC 設定は維持する。cp1 の同一内部ネットワークへの接続定義と停止状態も確認した。詳細は [仮想化ホスト側の確認](environment.md#仮想化ホスト側の接続確認) を参照。
@@ -233,7 +233,7 @@ DHCP 応答がなければ内部 L2 接続・競合 DHCP・ファイアウォー
 
 ## 6. 最初の 1 台の確認後に残り 5 台へ進む
 
-作業順は cp2 → cp3 → ワーカー 3 台。node001 と node002 は起動後の基本確認済みで、後続の [node003 の提供ログ](#2026-09-23-node003-の-nicmac-登録と-up-確認) でも MAC 登録・UP を確認した。現在は **6.3 の対象を node003 に置き換え、同期ログ・SSH・OS 内部・外部通信を確認する**。node002 の同期ログも証跡の補完として確認する。登録・起動済みの VM を再展開せず、以下の事前確認・登録手順は未展開ノードへの適用時に参照する。VM・MAC・IP の正本は [環境構成](environment.md#2026-09-22-の稼働後確認)、容量は [VM 一覧](vm-list.md) を参照する。
+作業順は cp2 → cp3 → ワーカー 3 台。node001～003 は [BCM からの直接確認](#2026-09-23-node001003-の-bcm-からの一括確認) で同期ログ・SSH・OS 内部・外部通信まで確認済み。現在は **6.4 のワーカー 3 台のディスク識別と展開準備へ進む**。登録・起動済みの VM を再展開せず、以下の事前確認・登録手順は未展開ノードへの適用時に参照する。VM・MAC・IP の正本は [環境構成](environment.md#2026-09-22-の稼働後確認)、容量は [VM 一覧](vm-list.md) を参照する。
 
 ヘッドを含む 7 台を扱えるライセンスは適用・確認済み。期間を空けて作業する場合は `cmsh -c 'main licenseinfo'` と `verify-license verify` で再確認する。出力にはライセンス識別情報があるため、そのまま公開しない。
 
@@ -563,6 +563,89 @@ node003 の基本確認後にワーカーへ進む。ワーカーは OS 用・To
 3. [保守手順](repository-maintenance.md#保存前の確認コミット手順) を今回の 3 文書に適用し、Markdown のリンク・コードブロック、進捗の整合、ステージ済み差分・公開情報と `input/` の非追跡・除外を確認して公開用名義でコミットする。新規文書はなく README の既存索引を維持する。ID と残変更は完了報告に記載する。
 
 記録作業の証跡は本タスクのツール出力と Git 差分・履歴。今回のログだけで確認できない項目は上記のとおり残し、次の提供結果に基づき更新する。
+
+## 2026-09-23: node001～003 の BCM からの一括確認
+
+### 対象・実行順と確認方法
+
+ユーザーの依頼に基づき、Codex が 01:20～01:25 JST に BCM ヘッドの root 権限から読み取り専用で確認した。対象は展開済み node001～003。BCM は `main versioninfo` で Cluster Manager 11.0 / CMDaemon 3.1 / Build Index 165270 を再確認。ゲスト OS・リソース等の実測値は [環境構成](environment.md#2026-09-23-node001003-の直接確認) に集約する。Git 2.43.0 / Python 3.12.3 は以前の確認値を引き継ぐ。ノードの起動・設定変更・再展開・再起動は行っていない。
+
+1. `pwd`、`hostname`、`id -u`、`command -v cmsh`、`date --iso-8601=seconds` で実行場所・権限・時刻を確認。README、要件、既存の環境構成・検証状況・PXE 手順・保守手順を `cat` / `sed` / `rg` で読んだ。開始時に別作業の変更 5 ファイルがあったため、Python と `git diff --binary` で比較用の一時控えを作成。別作業は調査中に独立したコミットとなった。
+2. Python `subprocess.run` で次の BCM 照会を実行し、独立したノードの照会は最大 3 並列とした。下記は実行コマンドをシェル形式に整理したもの。`device list` は 3 台とも UP、MAC・カテゴリ・BOOTIF IP は計画と一致。照会はすべて終了コード 0。
+
+```bash
+cmsh -c 'main versioninfo'
+cmsh -c 'device list'
+# 各 node001 / node002 / node003 に対して実行
+cmsh -c 'device use node001; get mac; get category; interfaces; list'
+cmsh -c 'device synclog node001'
+getent ahostsv4 node001
+```
+
+3. 3 台へ `ssh -v -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -o ConnectionAttempts=1 root@<NODE> 'bash -s'` を実行し、標準入力で以下の確認を送った。`<NODE>` は各ノード名へ置換。確認グループごとの終了コードも保存した。node001 / node002 は既存ホスト鍵を照合し、root の公開鍵認証と全 14 グループの終了コード 0 を確認。node003 は既存 known_hosts に ED25519 ホスト鍵がなく、終了コード 255 で停止したため、この試行ではゲスト内確認は未実行。
+
+```bash
+hostname
+id -un
+uname -r
+. /etc/os-release; printf '%s\n' "$PRETTY_NAME"
+nproc
+free -h
+ip -br addr
+ip -br link
+ip route
+ip route get 1.1.1.1
+findmnt -no SOURCE,FSTYPE /
+lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+swapon --show
+findmnt --fstab --types swap
+systemctl --failed --no-pager
+systemctl is-active cmd
+timedatectl show -p NTPSynchronized -p Timezone
+cat /etc/resolv.conf
+getent ahostsv4 docs.nvidia.com
+curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w 'HTTPS status: %{http_code}\n' https://docs.nvidia.com/
+if test -d /sys/firmware/efi; then printf 'UEFI boot\n'; else printf 'EFI runtime directory absent\n'; fi
+```
+
+`ip route get` は経路選択の照会であり、その宛先への疎通試験とは区別する。HTTPS は応答本文・Cookie を保存せず、通常の証明書検証付きで応答コードを取得した。
+
+4. node003 の接続方法を調査した。`cmsh -c 'device help exec'` と `cmsh -c 'device use node003; get sshhostkey'` は該当機能がなく終了コード 1。`device help ssh` / `device help get` は終了コード 0 で、通常 SSH のラッパーと取得可能な項目を確認。`rg --files` による `/var/spool/cmd`・`/cm/node-installer` の限定ファイル名検索は、一部 Permission denied により終了コード 2。共有鍵の秘密鍵本文は読んでいない。
+5. 並行して、カテゴリと各ノードのイメージ・起動方針、およびヘッドからの ICMP 疎通を確認した。すべて終了コード 0。3 台ともカテゴリの default-image / HTTP を継承し、ノード単位の installmode / nextinstallmode は空欄。カテゴリは AUTO / 新規 FULL。ping は各 2 回とも成功、損失 0%。
+
+```bash
+cmsh -c 'category use default; get softwareimage; get installmode; get newnodeinstallmode; get bootloaderprotocol'
+# 各 node001 / node002 / node003 に対して実行
+cmsh -c 'device use node001; get softwareimage; get installmode; get nextinstallmode; get bootloaderprotocol'
+ping -c 2 -W 2 node001
+```
+
+6. ローカルの `/cm/images/default-image/etc/ssh/ssh_host_ed25519_key.pub` と `/cm/node-installer/etc/ssh/ssh_host_ed25519_key.pub` の公開鍵から SHA256 を計算し、最初の SSH が提示したホスト鍵と比較。両公開鍵が 3 台すべての提示鍵と一致した（値は文書に非掲載）。イメージの公開鍵を使い、`node003 <鍵種別> <公開鍵>` の一時 known_hosts を Python の `tempfile.mkstemp` で権限 600 で作成。上記 SSH に `-o UserKnownHostsFile=<一時ファイル>` を追加し、**StrictHostKeyChecking=yes を維持**して再接続した。01:25 JST に root の公開鍵認証と全 14 グループの終了コード 0 を確認。一時ファイルは削除し、既存 known_hosts は変更していない。イメージ由来の鍵との照合であり、ノード固有の鍵を別経路で確認したこととは区別する。
+
+### 同期ログ・合否・残課題
+
+| ノード | FULL 同期開始（JST） | rsync 完了（JST） | 確認結果 |
+|---|---|---|---|
+| node001 | 2026-09-23 00:07:26 | 00:08:19 | FULL、Rsync completed、UP、SSH・OS 内部・外部 HTTPS 成功 |
+| node002 | 2026-09-23 00:55:49 | 00:56:38 | 同上 |
+| node003 | 2026-09-23 01:11:50 | 01:12:38 | 同上。最初の SSH 失敗後、イメージ公開鍵との照合で接続 |
+
+同期ログは各 222,156 行。先頭の `Mode is FULL`・末尾の `Rsync completed` と転送集計を読み、全行をエラー関連語・典型的な rsync エラーで検索した。各 288 件の候補はファイル名・コメントで、残る実エラー候補は 0 件。全行を人手で精読したとは扱わない。OS 展開後の基本確認は 3 台で完了し、R-01 全体はワーカー 3 台が残る。BCM の UP は Kubernetes の Ready を意味しない。
+
+残課題はワーカーの準備・展開、再起動後と Kubernetes 構築後の swap 無効化、実効 Secure Boot・libvirt 永続構成の不足記録。3 台は同一のイメージ由来 ED25519 ホスト鍵を提示したため、ノード固有鍵による識別は未確立。今回鍵の更新・固有化は実施しない。単一宛先への IPv4 HTTPS 成功を、すべての配布元への到達性とはしない。
+
+### 証跡・文書更新
+
+一次資料は Git 管理外の `input/60-install-by-pxe/` に権限 600 で保存した。
+
+- `2026-09-23-node001-003-bcm-check.json`: BCM・同期ログ、最初の SSH、送信スクリプト、開始・終了時刻と終了コード。
+- `2026-09-23-node003-trust-path-help.json`: 不成功を含む cmsh のヘルプ調査。
+- `2026-09-23-node001-003-bcm-extra.json`: カテゴリ・ノード設定と ICMP 疎通。
+- `2026-09-23-node003-image-key-check.json`: 信頼元、node003 の再接続・内部確認結果。
+
+読み取りレビューのサブエージェントは `cat` / `rg` / `sed` で関連文書と VM 一覧を確認し、Python で JSON の結果・同期ログ全行検索・終了コード・容量を照合した（終了コード 0）。別サブエージェントはローカル BCM の Python API と同梱例を調査。`pdftotext` 未導入の試行は終了コード 1、存在しないモジュール名を含む検索は一部終了コード 2。その後、実在する `pythoncm` の `node.py` / `parallel.py` / `cluster.py` / `settings.py` と `execute.py` / `parallel-execute.py` を `rg` / `sed` で読み、CMDaemon RPC の遠隔実行経路を確認したが、実際には使用しなかった。既存の一時マニュアル抽出テキストも調べたが、直接の公開ホスト鍵取得手順は見つからなかった。ホスト鍵検証を無効化する同梱 SSH ヘルスチェックは使用していない。
+
+Python で本書・環境構成・検証状況を更新し、[保守手順](repository-maintenance.md#保存前の確認コミット手順) に従って Markdown のリンク・コードブロック、状態の整合、実際のステージ済み差分、公開情報、input の非追跡・除外を確認してコミットする。公開文書は実ヘッド名・UUID・公開鍵本文・指紋・外部応答の実アドレスを省略した。原本は公開しない。新規文書はなく、README の既存索引を使用。文書更新時にも別の Base View 作業の変更があったため、HEAD の 3 文書に今回の変更だけを適用した一時コピーと専用 Git インデックスを作成し、`git read-tree` / `git hash-object` / `git update-index` でコミット対象を限定する。共有作業ツリーの別変更は保持する。操作の証跡は上記ファイル、本タスクのツール出力と Git 差分・履歴。push は行わない。
 
 ## 根拠と適用範囲
 
