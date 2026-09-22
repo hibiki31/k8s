@@ -49,6 +49,42 @@ git log -1 --format='%h %s'
 
 過去の実行手順の網羅性確認と実環境の再検証は行っていない。今回のルール追加に伴う環境構成・検証進捗の変更はない。
 
+## 2026-09-23: Codex とユーザー双方の実行記録を明文化
+
+### 目的・前提
+
+[手順書化のルール](../AGENTS.md#実行した手順の手順書化必須) に、Codex とユーザー双方の実行が記録対象であること、およびユーザー実行の記録方法を明記する。実行者は Codex（読み取り専用レビューを委任したサブエージェントを含む）。この作業でユーザーが実行したコマンドの共有はない。
+
+対象は `AGENTS.md` と本書。実行場所はリポジトリのルートディレクトリで、文書編集とローカル Git コミットの権限が必要。Git は 2.43.0、編集ツールのバージョンと操作ごとの時刻は未記録。製品バージョンに依存せず、VM・クラスタの操作は行わない。
+
+### 実行した手順
+
+1. `pwd`、`git status --short --untracked-files=all`、`rg --files -g 'AGENTS.md' -g 'README.md' -g 'docs/**' -g '.gitignore'` で作業場所・文書・開始時の変更を確認した。開始前から `README.md` に未ステージの変更があったため、今回の編集・コミット対象から外した。
+2. `cat AGENTS.md`、`cat README.md`、`cat docs/repository-maintenance.md`、`git diff -- README.md`、`cat .gitignore` で既存方針・索引・保守記録・既存差分・除外設定を確認した。実行手順の保存義務はあったが、Codex とユーザー双方を対象とする明記はなかった。サブエージェントにも方針と保守記録の読み取り専用レビューを依頼し、同じ不足を確認した。
+3. `git --version`、`date -I`、`git log -1 --format='%h %s'`、`git var GIT_AUTHOR_IDENT`、`git var GIT_COMMITTER_IDENT` でバージョン・実施日・直前のコミット・コミット名義を確認した。既定の名義には公開可否未確認の識別情報があるため、前回と同じ公開用の汎用名義をコミット時に指定する。実値は転記しない。
+4. `apply_patch` で `AGENTS.md` と本書を更新した。記録対象・実行者・根拠・結果の項目を明記し、ユーザーから共有された情報の反映方法、情報不足時の扱い、提示しただけのコマンドを未実行とするルールを追加した。
+5. `git diff --check`、`git diff --stat`、`git diff -- AGENTS.md docs/repository-maintenance.md` と、前回の確認手順にある status・`input/` の非追跡・除外確認を実行した。空白エラーと原本の混入はなかった。初回の `git add AGENTS.md docs/repository-maintenance.md` は Git 管理領域が読み取り専用のため終了コード 128 で失敗した。再試行には同領域への書き込み権限を伴う実行が必要。
+6. `git log -3 --format='%h %s'`、`tail -65 docs/repository-maintenance.md`、`git status --short --untracked-files=all` で、並行作業の README 整理が別コミットとして保存されたことを確認した。本書に加わったその作業記録を保持し、今回の差分は方針の追記と本節だけであることを確認した。
+7. Git 管理領域への書き込み権限を伴う実行で同じ `git add` を再試行し、成功した。ステージ済みの対象一覧・差分・空白エラーを前回の手順で確認した。`git grep --cached -n -i -E 'password|token|secret|Authorization|PRIVATE KEY|https?://|@' -- AGENTS.md docs/repository-maintenance.md` と差分・文脈の目視で公開情報を確認し、`git diff --exit-code -- AGENTS.md docs/repository-maintenance.md` でステージ内容と作業ツリーの一致を確認した。`rg -n -i 'password|パスワード' docs/environment.md` で既存のパスワード欄が `<PASSWORD>` であることも確認した。`sed -n` による変更箇所の読み直しで、見出し・リンク先とアンカー・コードブロックの対応を確認した。
+
+### 保存前の確認・コミット手順
+
+[前回の確認手順](#保存前の確認コミット手順) を今回の 2 文書に限定して適用する。確認結果を本節へ反映した後にも、再ステージして同じ公開情報チェックを繰り返す。ステージ対象は `git add AGENTS.md docs/repository-maintenance.md`、コミット対象とメッセージは次のとおり。README の既存索引から本書を参照できるため、索引の追加は不要。
+
+```bash
+GIT_AUTHOR_NAME='Repository Maintainer' GIT_AUTHOR_EMAIL='maintainer@example.invalid' GIT_COMMITTER_NAME='Repository Maintainer' GIT_COMMITTER_EMAIL='maintainer@example.invalid' git commit --only AGENTS.md docs/repository-maintenance.md -m 'docs: clarify recording of Codex and user executions'
+git status --short
+git log -1 --format='%h %s'
+```
+
+### 結果・証跡・残課題
+
+期待結果は、双方の実行を保存する義務と記録方法が明文化されること。更新した方針に、実行者と根拠の区別、ユーザー操作を自動収集したと見なさないこと、未共有・未確認の扱いが含まれることを確認した。証跡は今回のツール実行結果、Git 差分・コミット履歴。ツール出力の原本ファイルは未保存。コミット後の ID と残変更は完了報告に記載する。
+
+公開情報チェックはステージ済み 2 文書の差分と関連文脈、ファイル名・コミットメッセージ・公開用の名義、`input/` の非追跡・除外を対象とし、問題はなかった。認証情報・実環境の識別情報・第三者資料の追加はなく、追加の削除・匿名化は不要。今回の変更に未解決事項はない。公開・push は対象外で、過去の履歴全体は再監査していない。
+
+本作業は文書の確認・更新のみで、過去のユーザー操作の網羅性と実環境は再検証していない。環境構成・検証進捗の変更はない。
+
 ## 2026-09-23: README のドキュメント索引を用途別に整理
 
 ### 目的・前提
