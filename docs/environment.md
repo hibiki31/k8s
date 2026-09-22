@@ -265,9 +265,24 @@ DNS 応答の実アドレス・別名、応答 Cookie・内部サービスの UR
 
 ## 2026-09-23: Base View の確認
 
-Codex がヘッド上でパッケージと管理 NIC を再照会した。`base-view=11.0-112736-cm11.0-f441b9a7e7`、`cmdaemon=11.0-165270-cm11.0-14a0291f4f` を確認し、管理 NIC は上の実測と同じ IP で UP。構成変更は行っていない。ユーザーから、ヘッドへのポート転送手順とブラウザーの Proxy 設定が整備済みとの報告を受けた。具体的な転送方式・設定値は未共有で、経路の実動作は未確認。
+Codex がヘッド上でパッケージと管理 NIC を再照会した。`base-view=11.0-112736-cm11.0-f441b9a7e7`、`cmdaemon=11.0-165270-cm11.0-14a0291f4f` を確認し、管理 NIC は上の実測と同じ IP で UP。構成変更は行っていない。ユーザーから、ヘッドへのポート転送手順とブラウザーの Proxy 設定が整備済みとの報告を受けた。後続のユーザー報告と下記の画像でブラウザーから管理画面を閲覧できたことを確認した。具体的な転送方式・設定値は未共有で、経路の設定内容は再検証していない。
 
-コマンド・証跡・接続案内は [Base View 手順](bcm-base-view.md)、待受・HTTP 応答と残るブラウザー確認は [検証状況](validation.md) を参照。
+コマンド・証跡・接続案内は [Base View 手順](bcm-base-view.md)、待受・HTTP 応答とブラウザーの確認結果は [検証状況](validation.md) を参照。
+
+### 2026-09-23: Base View の画面で確認した構成
+
+ユーザー提供の 6 枚を確認した。証跡と B 番号は [画面記録](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認) を参照。ファイル名の時刻は 01:16:22～01:20:57、タイムゾーンは未記録。以下は GUI の表示値であり、Codex が実機の設定を再照会した結果ではない。
+
+| 対象 | 画面で確認した内容・適用範囲 |
+|---|---|
+| ソフトウェアイメージ（B03） | `default-image`、`/cm/images/default-image`、カーネル `6.8.0-106-generic`、Nodes `6`。既存のイメージ定義と整合するが、6 台への展開完了を示す値ではない |
+| File System Parts（B04） | 8 件。`/cm/images/default-image/boot` は `BOOT` / `default-image:boot`、`/cm/images/default-image` は `IMAGE` / `default-image` と表示。他に `/cm/conf/all`、`/cm/shared`、`/tftpboot`、`/cm/node-installer` 等の行がある。省略表示のパスは補完せず、パスの実在・内容・同期成功は未確認 |
+| ノード分類（B05） | Head Node 1 件、Physical Node 6 件。BCM の管理上の分類であり、単一物理ホスト上の 7 VM という構成を変更しない |
+| ノードの IP・MAC（B05） | ヘッドの内部 IP と node001～node003 の登録 IP・MAC は既存記録と一致。ヘッドの MAC 列と IP 列が同じ NIC を示すとは断定しない。node004～node006 の MAC は全 0、IP は既存定義の `.14`～`.16` であり、ワーカーの予約値 `.21`～`.23` への調整は未確認。計算ノード 6 台は `default` / `internalnet` / `default-image` |
+| Resource Status（B01） | CoresTotal / CoresUp `20`、CoresDown `0`、GPU 関連の件数は `0`。画面上の集計値として記録し、全 VM の割り当て vCPU 合計を置き換えない |
+| Disks（B02） | `/` 使用 37.8 GiB・空き 457 GiB、`/boot` 使用 106 MiB・空き 850 MiB、`/boot/efi` 使用 6.12 MiB・空き 93.6 MiB。ウィジェットの表示値で、全ノードの容量調査やディスク構成変更ではない |
+
+ノード状態、Health Checks、ライセンス使用数の表示は [検証状況](validation.md) と [画面確認の範囲](bcm-base-view.md#確認結果と限界) に記録する。ヘッドの実ホスト名は公開文書へ転記しない。
 
 ## 2026-09-23: node001～003 の直接確認
 

@@ -27,10 +27,10 @@
 | BCM インストールメディアの整合性チェック | 画面確認 | [BCM インストール記録](bcm-installation.md) の S05 に成功表示あり |
 | BCM インストーラーでの設定 | 画面確認 | 30 枚を [BCM インストール手順と設定記録](bcm-installation.md) に整理。S22 の Summary と S23～S30 の Show config まで確認 |
 | BCM のインストール完了・再起動後の稼働 | 実機確認 | 利用者の導入完了報告に加え、Ubuntu と CMDaemon の稼働を確認。DHCP・DNS・HTTP・NFS・SSH・NTP は active。OS / パッケージ版は [環境構成](environment.md#2026-09-22-の稼働後確認)。インストーラーの完了ログ自体は未取得 |
-| Base View の接続 | ヘッドから HTML 配信確認・ブラウザー未確認 | 9 月 23 日に cmd active、TCP 8081 待受を確認。通常の curl は証明書チェーンの検証で失敗（終了 60）。認証情報なしの単発 `-k` GET は HTTP 200、title は Base View。既存のポート転送・ブラウザー Proxy はユーザー報告で整備済み。Proxy 経由の画面表示・ログインは未確認。[接続手順・証跡](bcm-base-view.md) |
+| Base View の接続 | ユーザー報告・ログイン後の管理画面を確認 | 初回に cmd active・8081 待受・単発 `-k` GET の HTTP 200 を確認。後続の 6 枚で概要・イメージ・File System Parts・ノード一覧・Kubernetes 管理画面の閲覧を確認。NodesTotal 7 / Up 4 / Down 3 は、ヘッドと node001～003 が Up、ワーカー 3 台が Down の一覧と整合。認証入力・Proxy 設定内容・証明書対処操作は未記録。[画面証跡](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認) |
 | SSH 公開鍵・Codex CLI | ヘッドの鍵設置・node001～003 の公開鍵認証を確認 | 3 台とも root で成功。node003 はイメージ公開鍵を一時 known_hosts に固定して検証。3 台の ED25519 ホスト鍵は共有で、固有鍵による識別は未確立。CLI 0.155.1 の確認は以前の記録を引き継ぐ。ワーカーは未検証 |
-| OS 全体のサービス状態 | 失敗ユニットあり | 22 時台は shorewall6 の 1 件（IPv6 interfaces 未定義、IPv4 shorewall は active）。23:26 の確認では fwupd-refresh も失敗し、計 2 件。fwupd-refresh の原因とライセンス登録との関連は未調査。CMDaemon は active |
-| BCM のライセンス条件 | 登録完了・実機確認 | Free / Advanced、Licensed nodes は使用 1／上限 10。ヘッドを含む 7 台の要件を満たす。`verify-license verify` は終了コード 0、確認時点で有効期間内。正確な有効期間は Git 管理外の証跡に保持し、公開文書では省略する。登録前の Temporary / 上限 2 から更新。[登録手順と証跡](bcm-licensing.md) |
+| OS 全体のサービス状態 | 失敗ユニットあり・解消未確認 | 22 時台は shorewall6 の 1 件（IPv6 interfaces 未定義、IPv4 shorewall は active）。23:26 は fwupd-refresh も失敗し、計 2 件。原因・登録との関連は未調査。後続の Base View は Health Checks `17/17` Pass を表示するが、OS 全体の失敗ユニット解消の証跡とはしない。[画面の確認範囲](bcm-base-view.md#確認結果と限界) |
+| BCM のライセンス条件 | 登録完了・実機確認後、GUI で使用数確認 | 登録後の確認は Free / Advanced、Licensed nodes 使用 1／上限 10、`verify-license verify` 終了 0、有効期間内。後続の Base View B02 は Nodes `4 / 10`、Accelerators `0 / 10` を表示。ヘッドを含む 7 台の要件に対するノード上限は維持。登録時の検証結果と GUI の表示時点を区別する。[登録手順](bcm-licensing.md)・[画面証跡](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認)。正確な有効期間は Git 管理外の証跡に保持 |
 | ライセンス登録後の証明書 | ヘッド・配信元を実機確認 | cmd は active、ヘッド UP。default-image と node-installer の cluster.pem がヘッドと一致。計算ノードでの新証明書取得は PXE 展開時に確認する |
 | ゲストの IP・ゲートウェイ・DNS 設定 | ヘッド・cp1～3 を実機確認 | 3 台の予定 IP・MAC、ヘッド経由の経路と DNS を直接確認。ヘッドは以前の結果を引き継ぐ。ワーカーは未登録で定義 IP が計画と不一致。[構成](environment.md#2026-09-23-node001003-の直接確認) |
 | BCM による内部ネットワークの DHCP・PXE 提供 | node001～003 の FULL 同期・起動を確認 | 3 台の同期ログで FULL と Rsync completed を確認。DHCP パケット自体は未採取。node001 の PXE 画面は既存記録を引き継ぐ。[一括確認](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認) |
@@ -38,7 +38,7 @@
 | CUDA 追加パッケージ | 選択画面確認 | S21・S22 で選択あり。GPU なし構成での選択理由と導入結果は未確認 |
 | 内部ネットワークから外部へのルーティング・NAT | ヘッド設定・cp1～3 の外部疎通を確認 | 3 台のヘッド経由デフォルト経路、外部 DNS、docs.nvidia.com への IPv4 HTTPS HTTP 200 を直接確認。ヘッドの NAT 設定は以前の結果を引き継ぐ。ワーカーは未確認 |
 | R-01: BCM による 6 台への OS 展開 | 3 / 6 台で初回展開・起動後の基本確認完了 | node001～003 の FULL 同期完了・UP・SSH・ディスク上のルート・失敗サービス 0 件・外部 HTTPS を確認。ワーカー 3 台は MAC 未登録・DOWN / unassigned。[一括確認](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認) |
-| R-02: Kubernetes クラスタ構築・基本動作 | 未確認 | コントロールプレーン 3 台・ワーカー 3 台が目標。構築後・再起動後の swap 無効を確認する。[BCM 実装調査と選択肢](bcm-pxe-provisioning.md#kubernetes-と-swap) |
+| R-02: Kubernetes クラスタ構築・基本動作 | 未確認・管理画面の表示まで | Base View B06 は Cluster Creation の Launch を表示するが、ウィザード実行・作成完了の証跡ではない。コントロールプレーン 3 台・ワーカー 3 台が目標。構築後・再起動後の swap 無効を確認する。[画面証跡](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認)・[BCM 実装調査と選択肢](bcm-pxe-provisioning.md#kubernetes-と-swap) |
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
 | ワーカーの LVM 初期化 | 未実施 | 初期資料で今後実施と記載 |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
