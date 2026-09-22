@@ -40,14 +40,14 @@
 | R-01: BCM による 6 台への OS 展開 | 3 / 6 台で初回展開・起動後の基本確認完了 | node001～003 の FULL 同期完了・UP・SSH・ディスク上のルート・失敗サービス 0 件・外部 HTTPS を確認。ワーカー 3 台は MAC 未登録・DOWN / unassigned。[一括確認](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認) |
 | R-02: Kubernetes クラスタ構築・基本動作 | 未確認・管理画面の表示まで | Base View B06 は Cluster Creation の Launch を表示するが、ウィザード実行・作成完了の証跡ではない。コントロールプレーン 3 台・ワーカー 3 台が目標。構築後・再起動後の swap 無効を確認する。[画面証跡](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認)・[BCM 実装調査と選択肢](bcm-pxe-provisioning.md#kubernetes-と-swap) |
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
-| ワーカーの LVM 初期化 | 未実施 | 初期資料で今後実施と記載 |
+| ワーカーの LVM 初期化 | 設計案・静的検証済み、実初期化は未実施 | BCM の VG 定義に LV 1 個以上が必要と確認。VG + 4 MiB raw seed の XML は XSD / node-installer validate nodetect に成功。node004～006 は 01:38 JST の照会でも未登録・DOWN。実ディスク識別、初回作成・再起動保持・PVC 動作は未確認。[設計と調査記録](worker-storage.md) |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
 
 要件 ID と確認条件は [検証要件](requirements.md) を参照してください。
 
 ## 次の作業
 
-1. コントロールプレーン用 3 台の初回展開後確認は完了。ワーカー 3 台を [展開手順](bcm-pxe-provisioning.md#64-ワーカーの追加ディスクを保護して展開する) に従って準備する。OS 用と TopoLVM 用ディスクを識別し、停止中の MAC 登録とワーカー IP 調整後、各台の展開・起動・外部通信を確認する。
+1. コントロールプレーン用 3 台の初回展開後確認は完了。ワーカーは [LVM 設計案](worker-storage.md) と [既存の OS 展開手順](bcm-pxe-provisioning.md#64-ワーカーの追加ディスクを保護して展開する) を参照し、作成方式を確定する。OS / 追加ディスクを識別し、node004 の専用設定・MAC 登録・IP 調整後、先行展開と LVM・データ保持を検証してから node005・006 へ広げる。設定変更・起動はまだ実施していない。
 2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを別途確認する。ヘッドの shorewall6 / fwupd-refresh の失敗原因・対応は今回再検証しておらず、別途確認する。
 3. Kubernetes のコントロールプレーン・etcd の配置と、[ネットワークのアドレス設計](requirements.md#構築前に確認する事項) を確定して構築し、各ノードの役割・Ready 状態と基本動作を確認する。
 4. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。

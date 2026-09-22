@@ -30,8 +30,9 @@ KVM / QEMU と libvirt を使用し、BCM ヘッドノードを含む 7 台の V
 | 1 | [BCM インストール手順と設定記録](docs/bcm-installation.md) | ヘッドノードの導入。30 枚の画面に基づく操作順、設定値、Summary・Show config と未確認事項 |
 | 2 | [BCM ライセンス登録手順と実施記録](docs/bcm-licensing.md) | ヘッドノード導入後、計算ノード展開前の登録。証明書更新と登録後の確認 |
 | 3 | [BCM の PXE・OS 展開手順](docs/bcm-pxe-provisioning.md) | ライセンス・NIC・ディスクの前提確認、最初の 1 台の展開・確認、その後の残り 5 台への展開 |
+| 4 | [ワーカーの LVM 構成・展開設計案](docs/worker-storage.md) | ワーカー初回 PXE 前に参照。TopoLVM 用 VG と最小 LV、初回作成と運用時の保持方針、静的検証結果 |
 
-Kubernetes・Multus・TopoLVM の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
+Kubernetes・Multus・TopoLVM 本体の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
 
 ### 構築を進めるうえで知っておくべき知見
 

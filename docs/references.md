@@ -29,6 +29,12 @@
 
 2026-09-23 にローカル版 `admin-manual.pdf`（BCM 11 / Revision `47eff3c` / 2026-09-21）を追加確認した。§2.4.1 pp.38–39 に HTTPS 8081 と `/base-view`、§2.3.1 pp.34–35・§2.3.3 pp.36–37 に管理パスワードと認証、§2.6–2.6.1 pp.82–83 に CMDaemon と `cmd.service`、§6.5 pp.340, 346 に root の権限と Base View 認証の説明がある。紙面・PDF 通しページは一致。[接続手順と本環境の実測](bcm-base-view.md) を参照。
 
+## ワーカーの LVM / TopoLVM 準備
+
+2026-09-23 に [設計案と静的検証](worker-storage.md) を追加した。ローカル BCM 11 Admin Manual の §D.1 pp.941–948（VG / LV は p.947）、§D.7 pp.959–960、§D.11 pp.962–963 と、§5.4.4–5.4.6 pp.276–282（datanode は pp.279–280）を確認。インストール済み XSD と node-installer の検証処理も照合した。ページ番号は紙面 / PDF で一致する。
+
+TopoLVM は [Getting Started](https://github.com/topolvm/topolvm/blob/main/docs/getting-started.md)、[lvmd 設定](https://github.com/topolvm/topolvm/blob/main/docs/lvmd.md) と公式ソースを参照した。参照日は 2026-09-23、確認した main commit は `6560b19387d0cd4da230dc6113e745b4ac74f53b`。固定参照と実行記録は設計案の根拠節へ集約した。導入版は未定で、BCM と TopoLVM の連携を実環境で確認した結果ではない。
+
 ## 製品PDF一覧
 
 以下のファイルはすべて `input/10-bcm-installer-manual/` 配下です。「表紙・目次」の資料は用途と参照先を整理した段階で、本文の確認は今後行います。
