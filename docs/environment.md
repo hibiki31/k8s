@@ -23,7 +23,7 @@
 
 画面の出典: `input/30-bcm-install/` の 2026-09-22 のスクリーンショット。以下の S 番号は [BCM インストール記録の一次資料](bcm-installation.md#一次資料) に対応します。Networks（S14、S16）、Head node interfaces（S17）、Compute nodes interfaces（S18）、Summary（S22）、Show config の `network`（S24）と `headNode`（S29）を照合しました。時刻・パスは同記録に記載しています。
 
-以下のネットワーク表は構成計画とインストーラー画面の記録です。ヘッドの稼働後の IP と NIC は [実機確認](#2026-09-22-の稼働後確認)、BCM / cp1 の実接続は [後続の libvirt 出力](#仮想化ホスト側の接続確認) で照合しました。**計算ノードの IP 表は設定計画・予約値です。node001～003 は 2026-09-23 の [直接確認](#2026-09-23-node001003-の直接確認) で UP・SSH・予定 IP と外部 HTTPS を確認しました。node004 は [BCM の予定 IP・MAC 保存](#2026-09-23-node004-の初回設定保存と確認待ち) を確認し、FULL 承認待ち。ワーカーの展開後の通信は未確認です。** 進捗は [検証状況](validation.md) で管理します。
+以下のネットワーク表は構成計画とインストーラー画面の記録です。ヘッドの稼働後の IP と NIC は [実機確認](#2026-09-22-の稼働後確認)、BCM / cp1 の実接続は [後続の libvirt 出力](#仮想化ホスト側の接続確認) で照合しました。**計算ノードの IP 表は設定計画・予約値です。node001～003 は 2026-09-23 の [直接確認](#2026-09-23-node001003-の直接確認) で UP・SSH・予定 IP と外部 HTTPS を確認しました。node004 も [展開後の直接確認](#2026-09-23-node004-の初回展開後確認) で UP・SSH・予定 IP・外部 HTTPS を確認しました。node005・006 は未展開です。** 進捗は [検証状況](validation.md) で管理します。
 
 ### 仮想ネットワークと接続
 
@@ -337,6 +337,28 @@ OS=`/dev/vda`、TopoLVM=`/dev/vdb` とする node004 用 XML の準備根拠に�
 | 状態 / リクエスト | INSTALLING、waiting for FULL install confirmation / full install pending |
 
 初回用 XML と IP・MAC の保存は確認済み。OS / PV / VG / LV の実体作成・UP・通信は未確認であり、運用用 XML への切替前。`datanode=yes` による明示承認を待っている。node005・006 の登録・展開は未実施のまま。
+
+## 2026-09-23: node004 の初回展開後確認
+
+利用者のコンソール承認報告後、Codex が 03:09:10～03:10:39 JST に BCM ヘッドから読み取り確認した。上の承認待ちは取得時点の記録として保持する。手順・SSH 鍵照合・証跡は [実施記録](worker-storage.md#2026-09-23-node004-の初回展開後確認) を参照。
+
+| 項目 | 実測値・状態 |
+|---|---|
+| BCM / 同期 | UP、FULL 開始 02:51:24、Rsync 完了 02:52:10 JST、確認要求なし |
+| モード / disksetup | datanode yes、通常 AUTO、次回モード・消去予約は空。disksetup は vda + vdb の初回用のまま |
+| SSH / OS | root 接続成功、Ubuntu 24.04.4 LTS、kernel `6.8.0-106-generic` |
+| CPU / メモリ | nproc 8、free 表示 31 GiB。8 vCPU / 32 GiB 計画と整合 |
+| ネットワーク | enp1s0 UP、`172.30.65.21/24`。ゲートウェイ・DNS `172.30.65.1`。追加 NIC enp6s0 は DOWN・IP なし |
+| OS ディスク | vda 256 GiB。vda1 EFI / vfat 100 MiB、vda2 swap 16 GiB、vda3 XFS `/` 約 239.90 GiB |
+| swap | `/dev/vda2` が有効、使用 0B。Kubernetes 構築前の状態 |
+| データディスク / PV | vdb 256 GiB、vdb1 LVM2_member。PV は `/dev/vdb1` の 1 個だけ、vda 側の混入なし |
+| VG | `vg_topolvm`、PV 1 / LV 1、PE 4 MiB、容量 `274873712640` bytes |
+| LV | `bcm_seed`、4 MiB、属性 `-wi-a-----`、割当 `/dev/vdb1(0)`。filesystem / mountpoint の表示なし |
+| VG 未割当 | `274869518336` bytes = 255.9921875 GiB。使用量は seed の 4 MiB のみ |
+| サービス / 時刻 | failed 0 件、cmd active、NTP 同期 yes、Asia/Tokyo |
+| 外部通信 | docs.nvidia.com の名前解決成功、IPv4 HTTPS HTTP 200 |
+
+lvmd の `spare-gb: 10` は未適用。初回作成と通常 OS 起動までの確認であり、再起動後の保持・運用用 XML への切替・TopoLVM / PVC 動作・Multus 設定は未確認。node001～003 の結果は前回の確認を引き継ぎ、今回再照会していない。
 
 ## 検証用の認証情報
 

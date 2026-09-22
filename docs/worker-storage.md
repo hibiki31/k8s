@@ -1,6 +1,6 @@
 # ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回用設定・IP・MAC の保存を確認済みで、FULL インストールの承認待ち。OS / LVM 作成完了は未確認。** node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
+整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・UP・OS / LVM・通信の確認完了。BCM の disksetup はまだ初回用で、運用用への切替・保持試験は未実施。** node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
 
 ## 結論と構成案
 
@@ -75,7 +75,7 @@ OS と LVM に使うデバイスを限定する設定は、**node004～006 だ�
 
 ## 適用・確認の順序
 
-以下は BCM 11.0 / CMDaemon 3.1（Build Index 165270）で構文・XML を確認した手順。実施者は利用者を想定し、実施済みの範囲は後述の実施記録・[最新の確認待ち調査](#2026-09-23-node004-の設定保存と-full-確認待ち) と区別して参照する。物理ホストの libvirt 管理権限、BCM ヘッドと対象ノードの root 権限が必要。まず node004 だけを進める。node001～003 と共有 `default` カテゴリは変更しない。
+以下は BCM 11.0 / CMDaemon 3.1（Build Index 165270）で構文・XML を確認した手順。実施者は利用者を想定し、実施済みの範囲は後述の実施記録・[最新の展開後確認](#2026-09-23-node004-の初回展開後確認) と区別して参照する。物理ホストの libvirt 管理権限、BCM ヘッドと対象ノードの root 権限が必要。まず node004 だけを進める。node001～003 と共有 `default` カテゴリは変更しない。
 
 ### 1. 物理ホストでディスクと NIC を確定する
 
@@ -488,6 +488,53 @@ Codex の追加作業と証跡:
 4. 本書・環境構成・進捗・PXE 案内の状態とリンクを更新。[保守手順](repository-maintenance.md#保存前の確認コミット手順) に従ってリンク・コードブロック・ステージ済み差分・公開情報・input の除外と非追跡を確認してコミットする。画面原本や実環境識別情報は Git へ追加しない。
 
 次は利用者が node004 の初回 FULL をコンソールまたは BCM で承認し、同期・UP・OS / LVM を確認する。成功後に運用用 XML へ切り替えて保持試験を行う。Codex は確認待ちの承認・設定変更・VM 電源操作を実行していない。
+
+## 2026-09-23: node004 の初回展開後確認
+
+利用者がコンソールで確認待ちを進めたと報告し、状態確認を依頼した。正確な操作時刻・キー入力は未記録。Codex は BCM ヘッドから **03:09:10～03:10:39 JST** に読み取り確認した。BCM の版は前節の 11.0 / Build 165270 を引き継ぎ、OS は Ubuntu 24.04.4 LTS / kernel `6.8.0-106-generic` と実測。必要権限は BCM 管理権限と node004 の root SSH。
+
+実行順と結果:
+
+1. 開始時の git status は変更なし。README・本書・既存 PXE 手順の SSH 検証方法・環境構成・進捗を `cat` / `sed` / `rg` で確認。サブエージェントは本書・準備済み初回 XML・既存の Admin Manual 抽出 p.278 と以前のヘルプを読み、LVM 合格条件と nextinstallmode が展開後の起動でクリアされる仕様を照合した。サブエージェントの実環境照会・変更はない。
+2. Python subprocess / ThreadPoolExecutor で次の BCM 読み取り 4 件を並行実行。全終了コード 0。UP、確認要求なし、datanode yes / 通常 AUTO / 次回モード空 / 消去予約空を確認。disksetup は初回用のまま。synclog は 02:51:24 JST に FULL 開始、02:52:10 JST に `Rsync completed.` を記録していた。
+
+```bash
+cmsh -c 'device status node004'
+cmsh -c 'device synclog node004'
+cmsh -c 'device installerinteractions -n node004'
+cmsh -c 'device use node004; get datanode; get installmode; get nextinstallmode; get disksetup; get blockdevicesclearedonnextboot'
+```
+
+3. `/cm/images/default-image/etc/ssh/ssh_host_ed25519_key.pub` の公開鍵だけを読み、Python tempfile で作った一時 known_hosts へ node004 の期待鍵として登録。SSH に `BatchMode=yes`、`StrictHostKeyChecking=yes`、`HostKeyAlgorithms=ssh-ed25519`、`UserKnownHostsFile=<一時ファイル>`、`GlobalKnownHostsFile=/dev/null`、`UpdateHostKeys=no`、`ConnectTimeout=8` を指定し `root@node004` へ接続。終了 0、stderr なし。既存 known_hosts・SSH 設定は変更せず、一時ファイルは処理後に削除した。展開元の共有鍵による照合であり、ノード固有鍵による識別とは区別する。
+4. SSH の標準入力で `python3 -` へ渡したプログラムから、下記 20 コマンドを順に実行し、個別の時刻・終了コード・出力を取得。全終了コード 0。結果は [環境構成](environment.md#2026-09-23-node004-の初回展開後確認) に集約する。
+
+```bash
+hostname
+id -un
+cat /etc/os-release
+uname -r
+nproc
+free -h
+ip -br addr
+ip route
+findmnt -no SOURCE,FSTYPE /
+lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+swapon --show
+systemctl --failed --no-pager --no-legend
+systemctl is-active cmd
+timedatectl show --property=NTPSynchronized --property=Timezone
+resolvectl dns
+getent ahostsv4 docs.nvidia.com
+curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w 'HTTPS status: %{http_code}\n' https://docs.nvidia.com/
+pvs --reportformat json --units b --nosuffix -o pv_name,vg_name,pv_size,pv_free
+vgs --reportformat json --units b --nosuffix -o vg_name,vg_size,vg_free,vg_extent_size,pv_count,lv_count
+lvs -a --reportformat json --units b --nosuffix -o vg_name,lv_name,lv_size,lv_attr,devices
+```
+
+5. 保存済み JSON を Python で解析し、全コマンド成功、PV / VG / LV 各 1 個、PV が vdb1 のみ、PE / seed 各 4 MiB、VG 使用量が seed の 1 PE のみであることを assert で確認。未割当は約 255.99 GiB。lsblk の seed の filesystem / mountpoint は空。synclog の先頭・末尾と FULL / 完了行も確認した。広い `error` 検索では転送ファイル名も一致するため、単語一致だけを障害判定に使わない。
+6. 本書・環境構成・進捗・PXE 案内を更新。最初の一括 apply_patch は進捗表の照合文字列が一致せず失敗し、変更なしを git status で確認してから実際の行を読み直して再編集した。[保守手順](repository-maintenance.md#保存前の確認コミット手順) に従って相対リンク・ブロック・ステージ済み差分・公開情報・input の非追跡と除外を確認して保存する。原本の大量出力、公開鍵・指紋・実ヘッド名は公開文書へ転記しない。
+
+証跡は `input/70-worker-lvm/2026-09-23-node004-post-confirm-bcm.json` と `input/70-worker-lvm/2026-09-23-node004-os-lvm-check.json`（新規作成、mode 0600）。今回の Codex 操作は確認のみで、BCM 設定変更・VG / LV 作成変更・再起動は行っていない。**次は [手順 6](#6-bcm-の-disksetup-を運用用へ切り替える) の運用用 XML への切替。** 初回用 XML のまま FULL を再実行すると追加ディスクも再初期化するため、切替後に保持試験を行う。再起動後の保持・TopoLVM / PVC 動作・node005 / node006 の展開は未確認。
 
 ## 根拠と適用範囲
 

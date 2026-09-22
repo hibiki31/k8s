@@ -308,7 +308,7 @@ curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w 'HTTPS status: 
 
 ### 6.4. ワーカーの追加ディスクを保護して展開する
 
-以下は追加ディスクを初期化せず、OS のみ BCM で展開する既存方式。今回了承された BCM の初回 FULL で TopoLVM 用 PV / VG も作成する方式は、[ワーカー LVM の適用手順](worker-storage.md#適用確認の順序) を参照する。VG + 最小 LV の初回作成用と、データディスクを再作成対象から外す運用用のレイアウトを分ける。node004 は初回用の BCM 設定保存・登録を確認済みで、FULL 承認待ち。
+以下は追加ディスクを初期化せず、OS のみ BCM で展開する既存方式。今回了承された BCM の初回 FULL で TopoLVM 用 PV / VG も作成する方式は、[ワーカー LVM の適用手順](worker-storage.md#適用確認の順序) を参照する。VG + 最小 LV の初回作成用と、データディスクを再作成対象から外す運用用のレイアウトを分ける。node004 は初回 FULL・UP・OS / LVM の確認まで完了し、運用用への切替が次の工程。
 
 各ワーカーにも 6.1 の読み取り確認を適用する。OS 用と TopoLVM 用はどちらも 256 GiB のため、容量だけで判断せず、`domblklist` のバックエンドと XML の `source` / `target` を作成時の用途と照合する。追加ディスクを `vdb` と推測しない。用途を確定できない場合は PXE 起動を保留する。
 
