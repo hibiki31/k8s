@@ -1,6 +1,6 @@
 # ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。利用者の設計案了承を受け、適用手順を具体化した。**ワーカーの設定変更・起動・ディスク初期化は未実施。** VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
+整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回用設定・IP・MAC の保存を確認済みで、FULL インストールの承認待ち。OS / LVM 作成完了は未確認。** node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
 
 ## 結論と構成案
 
@@ -73,9 +73,9 @@ OS と LVM に使うデバイスを限定する設定は、**node004～006 だ�
 
 この保持方針はインストール済み実装の限定調査に基づく提案で、AUTO 再起動・OS 再展開後の保持は未実証。BCM のファイル同期除外リストだけでパーティション初期化を防げるとは扱わない。
 
-## 適用・確認の順序（未実行）
+## 適用・確認の順序
 
-以下は BCM 11.0 / CMDaemon 3.1（Build Index 165270）で構文・XML を確認した手順。実施者は利用者を想定し、各手順の実行日時・結果は実施後に記録する。物理ホストの libvirt 管理権限、BCM ヘッドと対象ノードの root 権限が必要。まず node004 だけを進める。node001～003 と共有 `default` カテゴリは変更しない。
+以下は BCM 11.0 / CMDaemon 3.1（Build Index 165270）で構文・XML を確認した手順。実施者は利用者を想定し、実施済みの範囲は後述の実施記録・[最新の確認待ち調査](#2026-09-23-node004-の設定保存と-full-確認待ち) と区別して参照する。物理ホストの libvirt 管理権限、BCM ヘッドと対象ノードの root 権限が必要。まず node004 だけを進める。node001～003 と共有 `default` カテゴリは変更しない。
 
 ### 1. 物理ホストでディスクと NIC を確定する
 
@@ -144,7 +144,7 @@ xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd input/70-wo
 
 全コマンド成功を確認してから進む。`validate nodetect` は構造検証であり、実ディスクの対応・空き容量・初期化してよい状態は保証しない。
 
-2026-09-23 の後続作業で、この BCM ヘッドの `input/70-worker-lvm/node004-initial.xml` と `node004-os-only.xml` は実デバイス対応を反映して準備・静的検証済み。現在の作業環境では再コピー・再置換は不要。Git 管理外のため、別環境への clone ではこの生成結果は含まれない。BCM への取込みは未実施。
+2026-09-23 の後続作業で、この BCM ヘッドの `input/70-worker-lvm/node004-initial.xml` と `node004-os-only.xml` は実デバイス対応を反映して準備・静的検証済み。現在の作業環境では再コピー・再置換は不要。Git 管理外のため、別環境への clone ではこの生成結果は含まれない。02:48 JST の読み取りでは node004 に初回用 XML が保存済みと確認。運用用への切替は未実施。
 
 ### 3. node004 の設定を保存し、最後に MAC を登録する
 
@@ -204,6 +204,22 @@ virsh start tk8s-worker1
 ```
 
 VM コンソールで内部 NIC の UEFI IPv4 PXE → AUTO と進み、ノード確認画面が出たら node004・内部 MAC・予定 IP を照合する。`datanode=yes` による FULL の確認待ちが出たら、今回の初回作成で両ディスクを消去してよいことを確認して、そのノードだけ承認する。対象が違う、または FULL の理由が不明なら承認しない。
+
+`Confirm FULL install` 画面では `Proceed with FULL install` を選択して Enter を押す。提供画像のように `Cancel` が選択されていれば、コンソールへキーボード入力のフォーカスを移し、上矢印 2 回で先頭項目を選ぶ。`Cancel` はリモート操作の確認待ちを続ける選択で、FULL の開始ではない。`Abort and enter maintenance mode` は中断して保守モードに入る。この画面が繰り返されるだけでは、VM 自体が再起動を繰り返しているとは判断しない。
+
+コンソール入力が難しい場合は、**BCM ヘッド上**から次で node004 の要求を確認できる（読み取り専用）。
+
+```bash
+cmsh -c 'device installerinteractions -n node004'
+```
+
+対象が node004 の `full install` / `pending` で、保存済み disksetup が今回の初回用であることを確認後、コンソールの Proceed の代わりに以下で **node004 の現在の要求だけを承認**できる。初回用の `/dev/vda`・`/dev/vdb` は初期化される。`-w` が実適用、`--confirm` が承認を意味する。以下の実承認は Codex 未実行。
+
+```bash
+cmsh -c 'device installerinteractions -w -n node004 --confirm'
+```
+
+コンソールと BCM のどちらか一方で承認すればよい。確認待ちを解くための `datanode=no` への変更、再起動、次回 FULL の再設定は不要。承認後も同じ確認が新たに出る場合は、再承認を繰り返す前に要求・状態・同期ログとコンソールの直前のエラーを確認する。
 
 **BCM ヘッド上**で状態と同期ログを確認する。
 
@@ -433,6 +449,45 @@ virsh domblkinfo tk8s-worker1 vdb
 Codex の作業は提供結果の確認と記録。開始時の `git status --short --untracked-files=all` は変更なし。README と本書・環境構成・進捗・保守手順を `cat` / `sed` で読み、サブエージェントも本書の適用順を読み取りレビューした。Python の os.open（新規作成のみ、mode 0600）でプロンプトの利用者名・物理ホスト名を省いた転記を `input/70-worker-lvm/2026-09-23-worker1-domblkinfo.txt` に保存し、容量の単位換算を確認した。BCM への照会・設定変更、VM 起動、ディスク操作は行っていない。前回準備・検証した XML を引き継ぎ、同じ静的検証は再実行していない。
 
 本書・環境構成・進捗を更新し、[保守手順](repository-maintenance.md#保存前の確認コミット手順) の相対リンク・コードブロック・ステージ済み差分・公開情報・原本の非追跡と除外を確認して保存する。未確認の識別値や認証情報は追加せず、公開用の汎用名義を使用する。初回展開・OS / LVM 確認・保持試験は未実施のまま。証跡は上記転記と本タスクのユーザー提供出力、文書の Git 差分・履歴。
+
+## 2026-09-23: node004 の設定保存と FULL 確認待ち
+
+利用者は次の実行結果と、`Confirm FULL install` 画面が繰り返される旨を共有した。実行場所は BCM ヘッドの root シェルと VM コンソール。各コマンドの実行日時・終了コード、VM 起動コマンドは未記録。画像ファイル名の時刻は 2026-09-23 02:47:22（ファイル名のタイムゾーンは未記録）。画面に node-installer `165270_14a0291f4f` を確認した。
+
+| 順序 | 利用者の操作・共有結果 |
+|---|---|
+| 1 | node004 の `blockdevicesclearedonnextboot`・initialize / finalize、および default カテゴリの initialize / finalize を get し、空であると報告 |
+| 2 | [手順 3](#3-node004-の設定を保存し最後に-mac-を登録する) の対話 cmsh で初回 XML・datanode yes・通常 AUTO・次回 FULL を set。validate は `All good`。get で XML・各値を確認 |
+| 3 | BOOTIF の IP、続いて内部 MAC を set / commit。device list は node004 の予定 IP・MAC・DOWN、interfaces は BOOTIF / internalnet を表示 |
+| 4 | VM の node-installer 画面を共有。FULL の承認を求める説明、`Cancel` の選択、カウント表示 7 を確認。利用者がどの選択肢を操作したか、Proceed を押したかは未記録 |
+
+対話 cmsh の変更印 `*` がある段階の出力には commit / quit 行がないが、これだけで未保存とは判断しない。Codex が **02:48:54～02:49:26 JST** に BCM ヘッド上で別の cmsh プロセスから次を読み取り、すべて終了コード 0 だった。
+
+```bash
+cmsh -c 'device use node004; get disksetup; get datanode; get installmode; get nextinstallmode; get mac; get blockdevicesclearedonnextboot; get initializescript; get finalizescript; interfaces; list'
+cmsh -c 'device help installerinteractions'
+cmsh -c 'device status node004'
+cmsh -c 'device synclog node004'
+cmsh -c 'device installerinteractions -n node004'
+```
+
+確認結果:
+
+- 保存済み disksetup は準備した初回用 XML と一致。datanode `yes`、通常 `AUTO`、次回 `FULL`、予定 MAC / IP、消去予約・ノードのフックは空。具体的な保存値は [環境構成](environment.md#2026-09-23-node004-の初回設定保存と確認待ち) に集約する。
+- 状態は `INSTALLING (waiting for FULL install confirmation)`、installerinteractions は node004 の `full install` / `pending`。想定どおり datanode の明示承認待ちに達している。
+- synclog は `Node seems to have never been booted.`。この時点でイメージ同期のログは得られず、現在の node-installer 到達を否定する根拠にはしない。OS / LVM 作成・同期完了は未確認。
+- ヘルプで対象指定 `-n`、`-w` なしの読み取り / dry run と実適用 `-w --confirm` を確認した。実承認は送っていない。
+
+診断は FULL の確認待ちの継続。画像の Cancel の説明、BCM の pending、Admin Manual §5.4.4 pp.279–280 の明示承認必須という仕様が一致する。確認画面の再表示間隔・タイマー実装は未確認で、VM 再起動ループや XML の不整合と断定しない。[手順 4](#4-worker1-を起動し初回-full-を確認する) にコンソール操作と対象限定のリモート承認方法を追記した。
+
+Codex の追加作業と証跡:
+
+1. 開始時の git status は変更なし。README・関連手順・環境構成・進捗を `cat` / `sed` で読み、提示画像を確認した。スクリプト内の確認画面文字列を `rg` で探索したが一致なし（終了 1）。`rg --files` で対象の存在を確認した。
+2. 読み取り専用レビューのサブエージェントもローカル Admin Manual の既存抽出 pp.279–280 を `cat` / `rg` で読み、確認機能を照合した。広い範囲の rg は終了 2、一部 spool の列挙には Permission denied があり、対象スクリプト内の文字列検索は一致なし。通常 sandbox の cmsh help は接続不可・終了 1、権限を伴う同じ help の再実行は終了 0。承認操作は行っていない。
+3. Python subprocess で上記の BCM 読み取りを実行し、出力・時刻・終了コードを `input/70-worker-lvm/2026-09-23-node004-full-confirm-readback.json` に保存。画像は `input/70-worker-lvm/2026-09-23-024722-full-confirm.png` に無加工保存、利用者のコマンドと結果の要約転記は `input/70-worker-lvm/2026-09-23-node004-setup-user-summary.txt` に保存した。新規ファイルは mode 0600、転記では実ヘッド名を省略した。
+4. 本書・環境構成・進捗・PXE 案内の状態とリンクを更新。[保守手順](repository-maintenance.md#保存前の確認コミット手順) に従ってリンク・コードブロック・ステージ済み差分・公開情報・input の除外と非追跡を確認してコミットする。画面原本や実環境識別情報は Git へ追加しない。
+
+次は利用者が node004 の初回 FULL をコンソールまたは BCM で承認し、同期・UP・OS / LVM を確認する。成功後に運用用 XML へ切り替えて保持試験を行う。Codex は確認待ちの承認・設定変更・VM 電源操作を実行していない。
 
 ## 根拠と適用範囲
 

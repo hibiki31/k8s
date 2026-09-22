@@ -23,7 +23,7 @@
 
 画面の出典: `input/30-bcm-install/` の 2026-09-22 のスクリーンショット。以下の S 番号は [BCM インストール記録の一次資料](bcm-installation.md#一次資料) に対応します。Networks（S14、S16）、Head node interfaces（S17）、Compute nodes interfaces（S18）、Summary（S22）、Show config の `network`（S24）と `headNode`（S29）を照合しました。時刻・パスは同記録に記載しています。
 
-以下のネットワーク表は構成計画とインストーラー画面の記録です。ヘッドの稼働後の IP と NIC は [実機確認](#2026-09-22-の稼働後確認)、BCM / cp1 の実接続は [後続の libvirt 出力](#仮想化ホスト側の接続確認) で照合しました。**計算ノードの IP 表は設定計画・予約値です。node001～003 は 2026-09-23 の [直接確認](#2026-09-23-node001003-の直接確認) で UP・SSH・予定 IP と外部 HTTPS を確認しました。ワーカー 3 台は未確認です。** 進捗は [検証状況](validation.md) で管理します。
+以下のネットワーク表は構成計画とインストーラー画面の記録です。ヘッドの稼働後の IP と NIC は [実機確認](#2026-09-22-の稼働後確認)、BCM / cp1 の実接続は [後続の libvirt 出力](#仮想化ホスト側の接続確認) で照合しました。**計算ノードの IP 表は設定計画・予約値です。node001～003 は 2026-09-23 の [直接確認](#2026-09-23-node001003-の直接確認) で UP・SSH・予定 IP と外部 HTTPS を確認しました。node004 は [BCM の予定 IP・MAC 保存](#2026-09-23-node004-の初回設定保存と確認待ち) を確認し、FULL 承認待ち。ワーカーの展開後の通信は未確認です。** 進捗は [検証状況](validation.md) で管理します。
 
 ### 仮想ネットワークと接続
 
@@ -322,6 +322,21 @@ Codex が BCM ヘッドから 01:21～01:25 JST に照会・SSH で確認した�
 | ファームウェア | UEFI / OVMF、Secure Boot・enrolled keys 無効の定義 |
 
 OS=`/dev/vda`、TopoLVM=`/dev/vdb` とする node004 用 XML の準備根拠に使う。後続の [domblkinfo 提供結果](worker-storage.md#2026-09-23-worker1-のディスク容量確認) は両方とも Capacity `274877906944` bytes、Allocation / Physical 各 `200704` bytes で、[VM 一覧](vm-list.md) の 256 GiB と一致した。XML の description や小さい Allocation / Physical の値だけでは、保存すべきデータがないことは断定しない。内部 NIC 優先は確認できたが、実際の IPv4 PXE 選択・BCM 登録・OS / LVM 作成は未確認。worker2・3 へ同じデバイス名を無確認で流用しない。
+
+## 2026-09-23: node004 の初回設定保存と確認待ち
+
+利用者の設定操作・画面共有後、Codex が 02:48:54～02:49:26 JST に BCM から別プロセスで読み取り確認した保存値。利用者のコマンド実行時刻と VM 起動操作は未記録。操作順・根拠・対応は [実施記録](worker-storage.md#2026-09-23-node004-の設定保存と-full-確認待ち) を参照。
+
+| 項目 | BCM で読み取った値 |
+|---|---|
+| node004 / BOOTIF | MAC `52:54:00:65:00:05`、IP `172.30.65.21`、internalnet、provisioning、always |
+| OS 用 disksetup | `/dev/vda`、GPT、EFI 100M / swap 16G / XFS ルート max |
+| データ用 disksetup | `/dev/vdb`、GPT、PV max、VG `vg_topolvm` / PE 4M、raw LV `bcm_seed` / 4M |
+| datanode / installmode / nextinstallmode | `yes` / `AUTO` / `FULL` |
+| 明示消去予約・ノードの initialize / finalize | 空。default カテゴリのフックは利用者が空と報告 |
+| 状態 / リクエスト | INSTALLING、waiting for FULL install confirmation / full install pending |
+
+初回用 XML と IP・MAC の保存は確認済み。OS / PV / VG / LV の実体作成・UP・通信は未確認であり、運用用 XML への切替前。`datanode=yes` による明示承認を待っている。node005・006 の登録・展開は未実施のまま。
 
 ## 検証用の認証情報
 
