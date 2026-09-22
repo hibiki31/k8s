@@ -23,7 +23,7 @@
 | cp2 の構成・起動後状態 | 実機確認・FULL 完了 / UP / SSH | 提供ログに続き、Codex が同期ログ・公開鍵認証・fstab・OS 内部・通信を直接確認。再起動後は未確認。[最新構成](environment.md#2026-09-23-node001003-の直接確認) |
 | cp3 の NIC・起動後状態 | 実機確認・FULL 完了 / UP / SSH | 提供ログに続き、Codex がゲスト IP・ディスク・UEFI 起動・OS 内部・通信を直接確認。libvirt の起動前構成・永続定義は未確認。[最新構成](environment.md#2026-09-23-node001003-の直接確認) |
 | PXE 対象 6 台の DHCP 要求送信 | 確認済み（初期記録） | 初期 `docs/vm-list.md` の記載。BCM からの応答・OS 展開成功までは示していない |
-| ワーカーの追加 NIC・ディスク | worker1 の永続定義を提供ログ確認 | 停止中、OS vda / TopoLVM vdb、内部 NIC 優先・Multus ROM 無効、UEFI / Secure Boot 無効の定義を確認。実容量・内容・ゲスト内認識は未確認。worker2・3 は初期記録を引き継ぐ。[構成](environment.md#2026-09-23-worker1-の起動前構成確認) |
+| ワーカーの追加 NIC・ディスク | worker1 の永続定義・仮想容量を提供ログ確認 | 停止中、OS vda / TopoLVM vdb、内部 NIC 優先・Multus ROM 無効、UEFI / Secure Boot 無効の定義を確認。後続の domblkinfo で両ディスク 256 GiB を確認。内容・ゲスト内認識は未確認。worker2・3 は初期記録を引き継ぐ。[構成](environment.md#2026-09-23-worker1-の起動前構成確認) |
 | BCM インストールメディアの整合性チェック | 画面確認 | [BCM インストール記録](bcm-installation.md) の S05 に成功表示あり |
 | BCM インストーラーでの設定 | 画面確認 | 30 枚を [BCM インストール手順と設定記録](bcm-installation.md) に整理。S22 の Summary と S23～S30 の Show config まで確認 |
 | BCM のインストール完了・再起動後の稼働 | 実機確認 | 利用者の導入完了報告に加え、Ubuntu と CMDaemon の稼働を確認。DHCP・DNS・HTTP・NFS・SSH・NTP は active。OS / パッケージ版は [環境構成](environment.md#2026-09-22-の稼働後確認)。インストーラーの完了ログ自体は未取得 |
@@ -47,7 +47,7 @@
 
 ## 次の作業
 
-1. コントロールプレーン用 3 台の初回展開後確認は完了。worker1 の OS / 追加ディスク対応を反映した node004 用 XML は準備済み。両ディスクの容量と初期化してよい内容を確認し、[適用手順 3](worker-storage.md#3-node004-の設定を保存し最後に-mac-を登録する) の専用設定・IP 調整・MAC 登録へ進む。先行展開と LVM・運用用レイアウトへの切替・データ保持を検証してから、個別にディスクを識別して node005・006 へ広げる。設定変更・起動はまだ実施していない。
+1. コントロールプレーン用 3 台の初回展開後確認は完了。worker1 の OS / 追加ディスク対応と両方 256 GiB を確認し、node004 用 XML は準備済み。両ディスクを初期化してよいという前提で、[適用手順 3](worker-storage.md#3-node004-の設定を保存し最後に-mac-を登録する) の専用設定・IP 調整・MAC 登録へ進む。先行展開と LVM・運用用レイアウトへの切替・データ保持を検証してから、個別にディスクを識別して node005・006 へ広げる。設定変更・起動はまだ実施していない。
 2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを別途確認する。ヘッドの shorewall6 / fwupd-refresh の失敗原因・対応は今回再検証しておらず、別途確認する。
 3. Kubernetes のコントロールプレーン・etcd の配置と、[ネットワークのアドレス設計](requirements.md#構築前に確認する事項) を確定して構築し、各ノードの役割・Ready 状態と基本動作を確認する。
 4. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。

@@ -315,13 +315,13 @@ Codex が BCM ヘッドから 01:21～01:25 JST に照会・SSH で確認した�
 |---|---|
 | VM / 状態 | `tk8s-worker1` / `shut off`。BCM の対応予定は node004 |
 | CPU / メモリ | 8 vCPU / 32 GiB。割り当て表と一致 |
-| OS 用ディスク | 通常の OS 用 qcow2 → virtio `vda`、boot order 2 |
-| TopoLVM 用ディスク | TopoLVM 用の別 qcow2 → virtio `vdb`、discard=`unmap`。容量・内容は未実測 |
+| OS 用ディスク | 通常の OS 用 qcow2 → virtio `vda`、boot order 2。後続の domblkinfo で Capacity 256 GiB |
+| TopoLVM 用ディスク | TopoLVM 用の別 qcow2 → virtio `vdb`、discard=`unmap`。後続の domblkinfo で Capacity 256 GiB |
 | 内部 NIC | `tk8s-internal` / `52:54:00:65:00:05` / virtio / boot order 1 |
 | Multus NIC | `tk8s-multus` / `52:54:00:66:00:01` / virtio / ROM 無効 |
 | ファームウェア | UEFI / OVMF、Secure Boot・enrolled keys 無効の定義 |
 
-OS=`/dev/vda`、TopoLVM=`/dev/vdb` とする node004 用 XML の準備根拠に使う。XML の description の空ディスク・256 GiB という説明だけでは、現在の内容・容量は確定しない。両ディスクの計画容量は [VM 一覧](vm-list.md) を維持し、`domblkinfo` での実容量確認は残る。内部 NIC 優先は確認できたが、実際の IPv4 PXE 選択・BCM 登録・OS / LVM 作成は未確認。worker2・3 へ同じデバイス名を無確認で流用しない。
+OS=`/dev/vda`、TopoLVM=`/dev/vdb` とする node004 用 XML の準備根拠に使う。後続の [domblkinfo 提供結果](worker-storage.md#2026-09-23-worker1-のディスク容量確認) は両方とも Capacity `274877906944` bytes、Allocation / Physical 各 `200704` bytes で、[VM 一覧](vm-list.md) の 256 GiB と一致した。XML の description や小さい Allocation / Physical の値だけでは、保存すべきデータがないことは断定しない。内部 NIC 優先は確認できたが、実際の IPv4 PXE 選択・BCM 登録・OS / LVM 作成は未確認。worker2・3 へ同じデバイス名を無確認で流用しない。
 
 ## 検証用の認証情報
 
