@@ -6,20 +6,42 @@ KVM / QEMU と libvirt を使用し、BCM ヘッドノードを含む 7 台の V
 
 ## ドキュメント索引
 
+ルート直下と `docs/` にある Git 管理対象の全ドキュメントを、用途別にまとめています。Git 管理外の `input/` に保管した製品資料は、[製品資料](docs/references.md) の索引を参照してください。
+
+### 要件・前提条件・資料・リポジトリ手順
+
 | ドキュメント | 内容 |
 |---|---|
+| [プロジェクト概要とドキュメント索引（本書）](README.md) | 検証の概要、文書の入口、資料の追加・更新方法 |
 | [検証要件](docs/requirements.md) | 検証目的、対象範囲、確認条件 |
 | [環境構成](docs/environment.md) | 仮想化方式、ネットワーク接続・IP 計画・MAC 対応・通信経路、ストレージ、未確定の設定 |
 | [VM 一覧](docs/vm-list.md) | VM 名、役割、CPU・メモリ・ディスク・NIC の割り当て |
 | [製品資料](docs/references.md) | BCM マニュアルの索引と参照箇所 |
-| [BCM / Kubernetes バージョン対応](docs/bcm-kubernetes-versions.md) | Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の導入候補・認定表示と確認方法 |
-| [BCM インストール手順と設定記録](docs/bcm-installation.md) | 30 枚の画面に基づく操作順、設定値、Summary・Show config と未確認事項 |
-| [BCM ライセンス登録手順と実施記録](docs/bcm-licensing.md) | OS シェルでの登録、入力・成功表示、証明書更新と登録後の確認 |
-| [BCM の PXE・OS 展開手順](docs/bcm-pxe-provisioning.md) | 稼働後の確認、ライセンス・NIC・ディスクの前提、最初の 1 台と残り 5 台の展開手順 |
 | [検証状況](docs/validation.md) | 確認済み事項、未実施・未確認の項目、次の作業 |
+| [リポジトリ作業方針](AGENTS.md) | 文書と一次資料の扱い、公開情報チェック、手順書化・コミットのルール |
 | [リポジトリ保守手順と実施記録](docs/repository-maintenance.md) | 作業ルール・文書の更新と確認の手順、実施結果 |
 
-要件と環境構成を確認してから構築記録を参照してください。作業の進捗は「検証状況」に集約します。
+### 構築手順（実施順）
+
+要件・環境構成・VM 一覧を確認してから、次の順に参照してください。実施済み範囲と次の作業は [検証状況](docs/validation.md) で確認します。
+
+| 順序 | ドキュメント | 内容 |
+|---|---|---|
+| 1 | [BCM インストール手順と設定記録](docs/bcm-installation.md) | ヘッドノードの導入。30 枚の画面に基づく操作順、設定値、Summary・Show config と未確認事項 |
+| 2 | [BCM ライセンス登録手順と実施記録](docs/bcm-licensing.md) | ヘッドノード導入後、計算ノード展開前の登録。証明書更新と登録後の確認 |
+| 3 | [BCM の PXE・OS 展開手順](docs/bcm-pxe-provisioning.md) | ライセンス・NIC・ディスクの前提確認、最初の 1 台の展開・確認、その後の残り 5 台への展開 |
+
+Kubernetes・Multus・TopoLVM の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
+
+### 構築を進めるうえで知っておくべき知見
+
+構築前や該当する作業の前に参照してください。手順書に含まれる解説は、その節へ直接リンクしています。
+
+| ドキュメント・解説 | 内容 |
+|---|---|
+| [BCM / Kubernetes バージョン対応](docs/bcm-kubernetes-versions.md) | Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の導入候補・認定表示と確認方法 |
+| [BCM の PXE と FULL 展開の仕組み](docs/bcm-pxe-provisioning.md#pxe-と-full-展開の仕組み) | 電源投入から OS 起動まで、AUTO / FULL の決定、再起動時の同期とディスクへの影響 |
+| [Kubernetes と swap](docs/bcm-pxe-provisioning.md#kubernetes-と-swap) | BCM のセットアップによる swap 無効化の扱いと、構築後・再起動後の確認点 |
 
 ## リポジトリ構成
 
