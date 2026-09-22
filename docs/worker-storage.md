@@ -1,6 +1,6 @@
-# ワーカーの初回展開と TopoLVM 用 LVM の設計案
+# ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**提案・静的検証の段階であり、ワーカーの設定変更・起動・ディスク初期化は未実施。** VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
+整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。利用者の設計案了承を受け、適用手順を具体化した。**ワーカーの設定変更・起動・ディスク初期化は未実施。** VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
 
 ## 結論と構成案
 
@@ -75,22 +75,243 @@ OS と LVM に使うデバイスを限定する設定は、**node004～006 だ�
 
 ## 適用・確認の順序（未実行）
 
-1. 物理ホストで worker1～3 の停止状態、内部 NIC / Multus NIC、OS / 追加ディスク、UEFI PXE 順序を照合する。追加ディスクは初期資料では空だが、今回内容を再確認していない。
-2. node004 を先行対象にする。実デバイス名を確定した初回 XML を静的検証し、対象ノードだけへ設定する。`datanode=yes`、内部 MAC、BOOTIF の計画 IP も反映・再読確認する。MAC・IP の正本は [環境構成](environment.md#ネットワーク)。ワーカーの現行 `.14`～`.16` は計画 `.21`～`.23` への調整が必要。
-3. worker1 だけを PXE 起動し、対象確認後に初回 FULL を実行する。BCM の UP・同期完了と [OS 基本確認](bcm-pxe-provisioning.md#5-展開と起動を確認する) に加え、下記の LVM 読み取りで OS 側の PV 混入がなく、VG・seed・十分な空き extents があることを確認する。
-4. node004 の disksetup を OS だけの運用用 XML へ切り替える。実 VG / seed は残す。検証用の追加 LV と内容を用意して AUTO 再起動し、PV/VG/LV の識別子・LV 数・内容が保持されることを確認する。破壊可能な検証データだけでの OS FULL 再展開試験も別途行い、保持可否を確定する。
-5. 合格した手順を node005・006 に適用する。Kubernetes 構築と TopoLVM の採用版・配置を確定後、3 ワーカーにだけ VG を参照する lvmd を配置する。最初の PVC 作成・書き込み・削除後にも seed と VG が残り、空き容量が期待どおり変わることを確認する。
+以下は BCM 11.0 / CMDaemon 3.1（Build Index 165270）で構文・XML を確認した手順。実施者は利用者を想定し、各手順の実行日時・結果は実施後に記録する。物理ホストの libvirt 管理権限、BCM ヘッドと対象ノードの root 権限が必要。まず node004 だけを進める。node001～003 と共有 `default` カテゴリは変更しない。
 
-起動後の各ワーカー上で実行する読み取り例（未実行）:
+### 1. 物理ホストでディスクと NIC を確定する
+
+**KVM / libvirt 物理ホスト上**で実行する。
 
 ```bash
+virsh domstate tk8s-worker1
+virsh domiflist tk8s-worker1 --inactive
+virsh domblklist tk8s-worker1 --inactive --details
+virsh dumpxml tk8s-worker1 --inactive
+```
+
+確認条件:
+
+- VM が停止中。既に起動・展開されていれば、その状態を調べてから進める。
+- 内部 NIC は `tk8s-internal`、MAC は環境構成の worker1 行と一致。Multus NIC と区別する。
+- OS と TopoLVM 用の各 256 GiB ディスクについて、バックエンドの作成用途と guest target の対応が確定している。初回 FULL では両方を消去するため、保存すべき内容がないことを確認する。
+- UEFI / Secure Boot 無効 / 内部 NIC の IPv4 PXE 優先を確認する。
+
+例えば OS が `vda`、追加が `vdb` と照合できた場合だけ、後続 XML を `/dev/vda`、`/dev/vdb` にする。容量や接続順だけで推測しない。この照合結果が得られるまで MAC 登録・起動へ進まない。
+
+### 2. BCM ヘッドで初回用・運用用 XML を用意する
+
+**BCM ヘッド、リポジトリルート**で実行する。以下の `/root/k8s` は配置先に合わせる。コピー元は [初回用テンプレート](examples/worker-initial-lvm.xml) と [運用用テンプレート](examples/worker-os-only.xml)。実際の適用ファイルは Git 管理外の `input/` に保存する。
+
+```bash
+cd /root/k8s
+umask 077
+mkdir -p input/70-worker-lvm
+cp docs/examples/worker-initial-lvm.xml input/70-worker-lvm/node004-initial.xml
+cp docs/examples/worker-os-only.xml input/70-worker-lvm/node004-os-only.xml
+vi input/70-worker-lvm/node004-initial.xml input/70-worker-lvm/node004-os-only.xml
+```
+
+両ファイルの `/dev/OS_DISK` を確定した OS デバイスへ、初回用の `/dev/TOPO_DISK` を確定した追加デバイスへ置換する。これはワーカー内のデバイス名であり、BCM ヘッドのディスク名ではない。2 ファイルの OS 定義を一致させ、運用用には OS 以外の device / volumeGroup を含めない。以下はファイル内容だけを検査し、ディスク操作は行わない。
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import xml.etree.ElementTree as ET
+base = Path('input/70-worker-lvm')
+initial = ET.parse(base / 'node004-initial.xml').getroot()
+runtime = ET.parse(base / 'node004-os-only.xml').getroot()
+def structure(e):
+    return e.tag, e.attrib, (e.text or '').strip(), [structure(c) for c in e]
+devices = initial.findall('device')
+assert len(devices) == 2
+assert len(runtime.findall('device')) == 1 and runtime.find('volumeGroup') is None
+assert structure(devices[0]) == structure(runtime.find('device'))
+paths = [d.findtext('blockdev') for d in devices]
+assert len(set(paths)) == 2
+assert all(p and p.startswith('/dev/') and 'DISK' not in p for p in paths)
+assert initial.findtext('volumeGroup/name') == 'vg_topolvm'
+assert initial.findtext('volumeGroup/logicalVolumes/volume/name') == 'bcm_seed'
+assert initial.findtext('volumeGroup/logicalVolumes/volume/size') == '4M'
+print('OS:', paths[0], 'TopoLVM:', paths[1], 'OS definitions match')
+PY
+
+xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd input/70-worker-lvm/node004-initial.xml
+/cm/node-installer/scripts/disks -s /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd -x input/70-worker-lvm/node004-initial.xml validate nodetect
+xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd input/70-worker-lvm/node004-os-only.xml
+/cm/node-installer/scripts/disks -s /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd -x input/70-worker-lvm/node004-os-only.xml validate nodetect
+```
+
+全コマンド成功を確認してから進む。`validate nodetect` は構造検証であり、実ディスクの対応・空き容量・初期化してよい状態は保証しない。
+
+### 3. node004 の設定を保存し、最後に MAC を登録する
+
+**BCM ヘッド上**で、現在値を保存して消去予約とカスタムスクリプトを確認する。VM は停止したままにする。
+
+```bash
+cmsh -c 'device list'
+cmsh -c 'device use node004; get disksetup' > input/70-worker-lvm/node004-before-disksetup.txt
+cmsh -c 'device use node004; get mac; get datanode; get installmode; get nextinstallmode; get blockdevicesclearedonnextboot; get initializescript; get finalizescript; interfaces; list'
+cmsh -c 'category use default; get initializescript; get finalizescript'
+```
+
+`blockdevicesclearedonnextboot` は空であること。これは `datanode` / インストールモードによらず消去し得る予約なので、値があればその意図を調べ、解消するまで起動しない。initialize / finalize スクリプトも空、または内容を確認済みで追加ディスクを消去しないことが条件。node004 は MAC 未登録で、計画 IP が他ノードと重複しないことを照合する。
+
+次は `cmsh` を起動し、**対話モード**で 1 行ずつ実行する。エラーがあれば commit せず原因を確認する。
+
+```text
+device use node004
+set disksetup /root/k8s/input/70-worker-lvm/node004-initial.xml
+set datanode yes
+set installmode AUTO
+set nextinstallmode FULL
+validate
+get disksetup
+get datanode
+get installmode
+get nextinstallmode
+```
+
+node004 が選択され、XML の 2 ディスクと 4M seed、`yes` / `AUTO` / `FULL` が正しいことを確認したら、同じセッションで保存して終了する。
+
+```text
+commit
+quit
+```
+
+`set disksetup /絶対パス/file.xml` は XML の内容を BCM へ取り込む。後でファイルだけを編集しても BCM の保存値は変わらない。`nextinstallmode FULL` は初回に限る指定とし、通常の installmode は AUTO にする。
+
+内部 MAC を手順 1 で照合できた場合に、IP、MAC の順で登録する。以下は [環境構成](environment.md#ネットワーク) の node004 計画値。
+
+```bash
+cmsh -c 'device; interfaces node004; use BOOTIF; set ip 172.30.65.21; commit'
+cmsh -c 'device use node004; set mac 52:54:00:65:00:05; commit'
+cmsh -c 'device use node004; get disksetup; get datanode; get installmode; get nextinstallmode; get blockdevicesclearedonnextboot'
+cmsh -c 'device list'
+cmsh -c 'device; interfaces node004; list'
+```
+
+保存後の実値を再読し、BOOTIF が `internalnet` / 予定 IP、MAC が内部 NIC、XML が対象の 2 ディスクに限定されていることを確認する。
+
+### 4. worker1 を起動し、初回 FULL を確認する
+
+**物理ホスト上**で実行する。
+
+```bash
+virsh start tk8s-worker1
+```
+
+VM コンソールで内部 NIC の UEFI IPv4 PXE → AUTO と進み、ノード確認画面が出たら node004・内部 MAC・予定 IP を照合する。`datanode=yes` による FULL の確認待ちが出たら、今回の初回作成で両ディスクを消去してよいことを確認して、そのノードだけ承認する。対象が違う、または FULL の理由が不明なら承認しない。
+
+**BCM ヘッド上**で状態と同期ログを確認する。
+
+```bash
+cmsh -c 'device list'
+cmsh -c 'device synclog node004'
+```
+
+同期完了・UP・コンソール上の OS 起動後、コンソールの root シェルで `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` を取得する。BCM ヘッドから `ssh root@node004` を実行し、初回提示される指紋を照合して登録する。SSH のホスト鍵確認を無効化しない。
+
+### 5. node004 上で OS と LVM を確認する
+
+以下は **SSH 接続先 node004 上**。`pvs` などが存在しなければ LVM 管理ツールの導入・イメージ反映を別途確認し、未確認のまま進めない。
+
+```bash
+hostname
+ip -br addr
+ip route
+findmnt -no SOURCE,FSTYPE /
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+swapon --show
+systemctl --failed
+getent ahostsv4 docs.nvidia.com
+curl -4 -I --connect-timeout 5 --max-time 15 -sS -o /dev/null -w 'HTTPS status: %{http_code}\n' https://docs.nvidia.com/
 pvs -o pv_name,vg_name,pv_size,pv_free
 vgs -o vg_name,vg_size,vg_free,vg_extent_size,pv_count,lv_count
 lvs -a -o vg_name,lv_name,lv_size,lv_attr,devices
 ```
 
-確認条件は `vg_topolvm` の PV が追加ディスクだけ、初回 LV が `bcm_seed` 4 MiB の 1 個、VG 空きがほぼ全容量であること。後続の PVC 用 LV と区別して結果を保存する。
+合格条件は予定 IP / ゲートウェイ、OS ディスク上の XFS ルート、失敗サービス 0、DNS・HTTPS 成功に加えて次のとおり。
+
+- `vg_topolvm` の PV は追加ディスクのパーティション 1 個だけ。OS ディスクが混入していない。
+- VG の PE は 4 MiB、LV は `bcm_seed` 4 MiB の 1 個だけ。filesystem / mountpoint なし。
+- VG のほぼ全容量が未割当。`spare-gb: 10` は後続 lvmd の設定なので、ここではまだ差し引かれない。
+
+swap 16 GiB は既存 OS レイアウトを維持した結果として記録し、[Kubernetes 構築時の確認](bcm-pxe-provisioning.md#kubernetes-と-swap) は別途行う。
+
+### 6. BCM の disksetup を運用用へ切り替える
+
+手順 5 の合格後、**BCM ヘッドの対話 cmsh** で実行する。実 VG / seed は削除しない。
+
+```text
+device use node004
+set disksetup /root/k8s/input/70-worker-lvm/node004-os-only.xml
+validate
+get disksetup
+get datanode
+get installmode
+get nextinstallmode
+get blockdevicesclearedonnextboot
+```
+
+XML は同じ OS 定義だけ、`datanode=yes`、通常 AUTO、nextinstallmode と消去予約は空であることを確認し、`commit` → `quit`。初回 FULL 後も nextinstallmode が残っていれば、再起動せず理由を調べる。保存後に `cmsh -c 'device use node004; get disksetup'` で運用用の内容を再読する。**この切替前に再展開を試さない。**
+
+### 7. 検証用 LV で AUTO 再起動・OS 再展開後の保持を試す
+
+実 PVC データを置く前に node004 で行う。seed は残し、別の破壊可能なテスト LV を作る。**node004 上**で同名 LV が存在しないことを `lvs` で確認後、作成する。既に存在する場合は上書きせず由来を確認する。
+
+```bash
+lvcreate -L 16M -n bcm_persist_test vg_topolvm
+```
+
+**直前の lvcreate が成功した場合だけ**、新規テスト LV 全体へ書き込む。OS ディスクや PV デバイスを指定しない。
+
+```bash
+dd if=/dev/urandom of=/dev/vg_topolvm/bcm_persist_test bs=1M count=16 iflag=fullblock conv=fsync
+```
+
+比較用の記録は OS FULL で消えない **BCM ヘッドの `input/`** へ保存する。例えば次の読み取りスクリプトを `input/70-worker-lvm/node004-lvm-snapshot.sh` としてヘッドに保存する。
+
+```bash
+#!/bin/bash
+set -eu
+export LC_ALL=C
+pvs --reportformat basic --noheadings --units b --nosuffix -S vg_name=vg_topolvm -o pv_name,pv_uuid,vg_name,pv_size --sort pv_name
+vgs --reportformat basic --noheadings --units b --nosuffix vg_topolvm -o vg_name,vg_uuid,vg_size,vg_free,vg_extent_size,pv_count,lv_count
+lvs --reportformat basic --noheadings --units b --nosuffix vg_topolvm -o lv_name,lv_uuid,lv_size,devices --sort lv_name
+test "$(blockdev --getsize64 /dev/vg_topolvm/bcm_persist_test)" = 16777216
+sha256sum /dev/vg_topolvm/bcm_persist_test
+```
+
+ヘッドで以下を実行し、終了コード 0、PV / VG 各 1、LV 2 個、末尾にハッシュがあることを確認する。取得失敗を空の基準値として使わない。SSH ホスト鍵は手順 4 で確認済みが前提。
+
+```bash
+ssh -o StrictHostKeyChecking=yes root@node004 'bash -s' < input/70-worker-lvm/node004-lvm-snapshot.sh > input/70-worker-lvm/node004-before.txt
+```
+
+次の順で 2 回試験する。再起動は node004 上の `systemctl reboot` を使い、PXE を経由したことをコンソールと synclog で確認する。
+
+1. **通常 AUTO**: 手順 6 の設定・消去予約・フックを再確認して再起動。予期しない FULL の確認待ちが出たら承認せず、理由を調べる。UP 後に同じスクリプトを使い、出力先だけ `node004-after-auto.txt` にして取得する。
+2. **OS だけの FULL**: AUTO の保持合格後、BCM の保存済み disksetup が OS だけであることを再読する。`cmsh -c 'device use node004; set nextinstallmode FULL; commit'` とし、node004 を再起動。OS 上の内容は消去される試験なので、結果・必要なログをヘッドへ退避済みとする。コンソールで node004 の FULL を明示承認する。UP 後に出力先 `node004-after-full.txt` で取得し、nextinstallmode が空に戻ることも確認する。
+
+FULL 後の SSH ホスト鍵が変わった場合はコンソールで再照合し、警告を無条件に回避しない。いずれの試験もまず `pvs` / `vgs` / `lvs -a -o lv_name,lv_uuid,lv_attr,devices vg_topolvm` の起動直後の結果をヘッド側へ保存する。VG / LV の識別子が基準と一致するが LV が inactive の場合は、node004 上で `vgchange -ay --activationmode complete vg_topolvm`、`udevadm settle`、`test -b /dev/vg_topolvm/bcm_persist_test` の順に有効化・確認してから取得する。これは読み取りと異なり活性状態を変える操作である。VG / LV が見つからない場合に作り直す操作はしない。
+
+運用用 XML に VG 定義がない場合、現 node-installer の VG 有効化処理は省略される。OS の自動有効化は未確認であり、手動有効化が必要だった事実は保持の成否と分けて記録し、TopoLVM 導入前に解決する。`lv_attr` の active / open 状態は起動時に変わり得るため、上の比較用スクリプトでは属性全体を比較対象にしていない。
+
+**BCM ヘッド上**で比較する。
+
+```bash
+diff -u input/70-worker-lvm/node004-before.txt input/70-worker-lvm/node004-after-auto.txt
+diff -u input/70-worker-lvm/node004-before.txt input/70-worker-lvm/node004-after-full.txt
+```
+
+両方終了コード 0・差分なしが期待結果。PV/VG/LV の識別子・サイズ・個数と LV の全内容が同一であることを確認する。デバイス名だけが変わった場合も、パス固定の disksetup に影響するため合格扱いにせず原因を調べる。UUID・ハッシュの実値は Git 管理文書へ転載しない。
+
+両試験合格後に **node004 上**で `lvremove /dev/vg_topolvm/bcm_persist_test` を実行し、対象名を確認して削除を承認する。`bcm_seed` は残す。LV 1 個と空き容量の回復を確認する。
+
+### 8. node005・006 へ展開し、その後に TopoLVM を導入する
+
+node004 の合格後、[環境構成の MAC・IP 対応](environment.md#ネットワーク) を使い、worker2 → worker3 の順で手順 1～6 を適用する。各 VM でディスク用途・target を照合し、ファイル名・BCM ノード名・VM 名・IP・MAC を対象ごとに変更する。node004 の実デバイス名を無確認で流用しない。各台の初回展開・OS / LVM・運用用への切替・通常再起動後の保持を記録する。
+
+Kubernetes 構築と TopoLVM の採用版・配置を確定後、3 ワーカーにだけ VG を参照する lvmd を配置する。最初の PVC 作成・書き込み・削除後にも seed と VG が残り、空き容量が期待どおり変わることを確認する。
 
 lvmd 設定案（未導入・採用版の schema / Helm values は導入時に再確認）:
 
@@ -135,6 +356,41 @@ xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd /tmp/bcm-wo
 ```
 
 証跡は `input/70-worker-lvm/2026-09-23-bcm-worker-preflight.json`、自作 XML と検証要約を保存した同ディレクトリ、および本タスクのツール出力。実ディスクの PV / VG / LV 作成、再起動、TopoLVM の PVC 動作は未実施。
+
+## 2026-09-23: 適用手順の具体化と構文確認
+
+実行者は Codex と読み取りレビューのサブエージェント。利用者からは設計案の了承と手順提示の依頼を受けたが、この段階で新たなワーカー操作の実行報告はない。BCM ヘッド上の root 権限で、02:02～02:04 JST に次の読み取りを実行し、すべて終了コード 0。バージョンは前節の BCM 11.0 / Build 165270 を引き継ぎ、今回再照会していない。
+
+```bash
+cmsh -c 'device help set'
+cmsh -c 'device help validate'
+cmsh -c 'device help commit'
+cmsh -c 'device use node004; get datanode; get installmode; get nextinstallmode; get blockdevicesclearedonnextboot'
+cmsh -c 'category use default; get initializescript; get finalizescript'
+cmsh -c 'device use node004; get initializescript; get finalizescript'
+```
+
+観測結果は node004 の datanode が `no`、ノード固有 installmode / nextinstallmode / 消去予約は空、node004 と default カテゴリの initialize / finalize スクリプトも空。値の変更は行っていない。証跡は Git 管理外の `input/70-worker-lvm/2026-09-23-worker-procedure-help.json`（Python subprocess で終了コード・出力・時刻を保存）。node005・006 の同項目は今回未照会。
+
+続けて実施した手順と結果（個々の時刻は未記録）:
+
+1. 開始時の `git status --short --untracked-files=all` は変更なし。README・本書・環境構成・VM 一覧・PXE 手順・進捗・保守手順を `cat` / `rg` / `sed` で読み、前提を照合した。途中、存在しない `docs/bcm-pxe-boot.md` への sed は終了 2。正しい `docs/bcm-pxe-provisioning.md` を読み直して成功した。
+2. `/tmp/bcm-pdf-read` の pypdf、既存の一時抽出テキスト、`rg` / `sed` で Admin Manual の pp.166–169・278–282・947 と XSD / node-installer を照合。p.169 のファイルによる disksetup 取込みと p.281 の明示消去予約の扱いを確認した。OS-only XML で VG 有効化経路が省略されることは `disks` の action_mount / action_check を読んで確認した。
+3. 前節の自作 XML から [初回用](examples/worker-initial-lvm.xml) を保存し、Python ElementTree で追加 device と volumeGroup だけを除いた [運用用](examples/worker-os-only.xml) を作成。両方に対し、下記の構造検証を実行して成功した。プレースホルダーのままの検証であり、デバイスの存在確認・実初期化ではない。
+4. サブエージェントが `command -v pvs` で LVM コマンドの存在を確認した。`pvs` / `vgs` / `lvs` の `-o help` と `--readonly -o help` は sandbox 内のロック初期化に失敗（後者各終了 5）。ロック設定を変更せず、`rg --files /usr/share/man/man8`、Python gzip / pathlib によるインストール済み man と `/usr/sbin/lvm` の文字列の読み取りで列名・active 属性・activationmode の意味を照合した。これは実ノードでの LVM 情報取得成功を意味しない。
+5. 本書を適用順・期待結果・失敗時の停止条件・保持試験まで拡張し、README・既存 PXE 案内・進捗を更新した。手順中の初期化・起動・LV 作成・vgchange は未実行。保存時は [保守手順](repository-maintenance.md#保存前の確認コミット手順) に沿い、Markdown リンク・ブロック、XML、実行記録との区別、ステージ済み内容と公開情報を確認してコミットする。
+6. Python の pathlib / re / unicodedata で変更した Markdown 4 文書の相対リンク・アンカー 118 件とコードブロックを確認し、`bash -n` で本書の bash 例を実行せず構文解析した。ElementTree で両 XML の OS 定義の一致と本文 XML・ファイルの一致を確認。すべて成功し、`git diff --check` もエラーなし。サブエージェントは本書と XML 2 個を再読し、適用順と保持試験に重大な不足なしと確認した。`git ls-files -- input` は空、`git check-ignore -v` は読み取り証跡が `/input/` で除外されることを示した。
+
+実行した静的検証（各ファイルに 2 コマンド、計 4 コマンド。全成功）:
+
+```bash
+xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd docs/examples/worker-initial-lvm.xml
+/cm/node-installer/scripts/disks -s /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd -x docs/examples/worker-initial-lvm.xml validate nodetect
+xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd docs/examples/worker-os-only.xml
+/cm/node-installer/scripts/disks -s /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd -x docs/examples/worker-os-only.xml validate nodetect
+```
+
+公開文書には匿名化した実行場所と既存の公開可能な検証用値を使い、実ヘッド名・ディスクバックエンド・UUID・指紋・認証情報は追加しない。実ディスクの照合、BCM 設定適用、初回作成、AUTO / FULL 後の保持・活性化、TopoLVM 連携は引き続き未確認。公開・push と過去の履歴全体の再監査は今回の対象外。
 
 ## 根拠と適用範囲
 

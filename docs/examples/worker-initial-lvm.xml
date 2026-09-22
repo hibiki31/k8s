@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<diskSetup>
+  <device>
+    <blockdev>/dev/OS_DISK</blockdev>
+    <partitionTable>gpt</partitionTable>
+    <partition id="os_efi" partitiontype="esp">
+      <size>100M</size><type>linux</type><filesystem>fat</filesystem><mountPoint>/boot/efi</mountPoint>
+    </partition>
+    <partition id="os_swap"><size>16G</size><type>linux swap</type></partition>
+    <partition id="os_root">
+      <size>max</size><type>linux</type><filesystem>xfs</filesystem><mountPoint>/</mountPoint>
+    </partition>
+  </device>
+  <device>
+    <blockdev>/dev/TOPO_DISK</blockdev>
+    <partitionTable>gpt</partitionTable>
+    <partition id="topo_pv"><size>max</size><type>linux lvm</type></partition>
+  </device>
+  <volumeGroup>
+    <name>vg_topolvm</name><extentSize>4M</extentSize>
+    <physicalVolumes><member>topo_pv</member></physicalVolumes>
+    <logicalVolumes><volume><name>bcm_seed</name><size>4M</size></volume></logicalVolumes>
+  </volumeGroup>
+</diskSetup>
