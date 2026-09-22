@@ -74,7 +74,7 @@ S18 の Compute nodes interfaces は `BOOTIF` / `internalnet` / `IP offset: 0.0.
 
 ### NIC と MAC アドレスの対応
 
-以下は作成済み NIC 接続として提供された対応表です。BCM の 2 行は、同日後続の [libvirt 出力](#仮想化ホスト側の接続確認) に基づき当初資料から訂正しました。cp1 の内部 MAC も同出力で照合済みです。cp2 は [9 月 23 日の提供ログ](#2026-09-23-cp2-の起動前構成確認)、cp3 は [後続の NIC 照会](#2026-09-23-cp3-の-nic-と-bcm-登録確認) で照合しました。ワーカーは当初の提供情報を保持しています。
+以下は作成済み NIC 接続として提供された対応表です。BCM の 2 行は、同日後続の [libvirt 出力](#仮想化ホスト側の接続確認) に基づき当初資料から訂正しました。cp1 の内部 MAC も同出力で照合済みです。cp2 は [9 月 23 日の提供ログ](#2026-09-23-cp2-の起動前構成確認)、cp3 は [後続の NIC 照会](#2026-09-23-cp3-の-nic-と-bcm-登録確認)、worker1 は [起動前の永続定義](#2026-09-23-worker1-の起動前構成確認) で照合しました。worker2・3 は当初の提供情報を保持しています。
 
 | VM 名 | 接続ネットワーク | MAC アドレス |
 |---|---|---|
@@ -306,6 +306,22 @@ Codex が BCM ヘッドから 01:21～01:25 JST に照会・SSH で確認した�
 3 台ともデフォルト経路・DNS は `172.30.65.1`。ヘッドから各ノードへの ping は 2/2 成功。ゲスト内 `nproc` / `free` の表示は 4 vCPU / 16 GiB の割り当て計画と整合するが、libvirt の永続割り当てを再照会したものではない。UEFI は `/sys/firmware/efi` の存在を確認した範囲で、実効 Secure Boot は未確認。
 
 3 台とも展開元イメージと同一の ED25519 ホスト鍵を提示した。node003 は最初に未登録鍵で停止し、イメージ公開鍵を一時 known_hosts に固定して検証付きで再接続した。共有鍵のためノード固有鍵による識別とは区別する。既存 known_hosts・鍵・構成は変更していない。Kubernetes 構築・再起動後の swap 無効化とワーカーの展開は引き続き未確認。
+
+## 2026-09-23: worker1 の起動前構成確認
+
+利用者が物理ホストで実行した libvirt 出力の確認。実行日時・libvirt のバージョンは未記録で、Codex による物理ホストへの再照会ではない。証跡と実行順は [ワーカーの実施記録](worker-storage.md#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) を参照。以下は停止中の VM の次回起動用定義であり、ゲスト内の認識・設定反映は起動後に確認する。
+
+| 項目 | 提供出力で確認した内容 |
+|---|---|
+| VM / 状態 | `tk8s-worker1` / `shut off`。BCM の対応予定は node004 |
+| CPU / メモリ | 8 vCPU / 32 GiB。割り当て表と一致 |
+| OS 用ディスク | 通常の OS 用 qcow2 → virtio `vda`、boot order 2 |
+| TopoLVM 用ディスク | TopoLVM 用の別 qcow2 → virtio `vdb`、discard=`unmap`。容量・内容は未実測 |
+| 内部 NIC | `tk8s-internal` / `52:54:00:65:00:05` / virtio / boot order 1 |
+| Multus NIC | `tk8s-multus` / `52:54:00:66:00:01` / virtio / ROM 無効 |
+| ファームウェア | UEFI / OVMF、Secure Boot・enrolled keys 無効の定義 |
+
+OS=`/dev/vda`、TopoLVM=`/dev/vdb` とする node004 用 XML の準備根拠に使う。XML の description の空ディスク・256 GiB という説明だけでは、現在の内容・容量は確定しない。両ディスクの計画容量は [VM 一覧](vm-list.md) を維持し、`domblkinfo` での実容量確認は残る。内部 NIC 優先は確認できたが、実際の IPv4 PXE 選択・BCM 登録・OS / LVM 作成は未確認。worker2・3 へ同じデバイス名を無確認で流用しない。
 
 ## 検証用の認証情報
 

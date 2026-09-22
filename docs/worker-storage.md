@@ -26,7 +26,7 @@ BCM の制約を避ける別案として、OS だけ BCM で展開し、起動�
 
 ## 初回作成用 XML 案
 
-以下は自作の未適用テンプレート。**`/dev/OS_DISK` と `/dev/TOPO_DISK` は未解決のプレースホルダー**で、実デバイスではない。物理ホストの `virsh domblklist --details` / `dumpxml --inactive` のバックエンド・target と作成時用途を照合してから置換する。両ディスクは同容量なので、容量だけで識別しない。`vda` / `vdb` とも現時点では断定しない。FULL でこの XML を適用すると、指定した両ディスクを初期化する。
+以下は自作の未適用テンプレート。**`/dev/OS_DISK` と `/dev/TOPO_DISK` はプレースホルダー**で、実デバイスではない。物理ホストの `virsh domblklist --details` / `dumpxml --inactive` のバックエンド・target と用途を照合してから置換する。両ディスクは同容量の計画なので、容量だけで識別しない。node004 は後続の [提供ログ確認](#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) で OS=`vda`、TopoLVM=`vdb` と整理できた。node005・006 は未確認。FULL でこの XML を適用すると、指定した両ディスクを初期化する。
 
 ```xml
 <?xml version="1.0"?>
@@ -97,6 +97,8 @@ virsh dumpxml tk8s-worker1 --inactive
 
 例えば OS が `vda`、追加が `vdb` と照合できた場合だけ、後続 XML を `/dev/vda`、`/dev/vdb` にする。容量や接続順だけで推測しない。この照合結果が得られるまで MAC 登録・起動へ進まない。
 
+node004 の対応は [後続の提供ログ](#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) で確認済み。容量は当該出力に含まれないため、物理ホストで `virsh domblkinfo tk8s-worker1 vda` と `virsh domblkinfo tk8s-worker1 vdb` を追加確認する（未実行）。各 Capacity の期待値は 256 GiB = `274877906944` bytes。これは仮想容量の確認であり、ディスクの内容や物理ホストの空き容量を示すものではない。
+
 ### 2. BCM ヘッドで初回用・運用用 XML を用意する
 
 **BCM ヘッド、リポジトリルート**で実行する。以下の `/root/k8s` は配置先に合わせる。コピー元は [初回用テンプレート](examples/worker-initial-lvm.xml) と [運用用テンプレート](examples/worker-os-only.xml)。実際の適用ファイルは Git 管理外の `input/` に保存する。
@@ -141,6 +143,8 @@ xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd input/70-wo
 ```
 
 全コマンド成功を確認してから進む。`validate nodetect` は構造検証であり、実ディスクの対応・空き容量・初期化してよい状態は保証しない。
+
+2026-09-23 の後続作業で、この BCM ヘッドの `input/70-worker-lvm/node004-initial.xml` と `node004-os-only.xml` は実デバイス対応を反映して準備・静的検証済み。現在の作業環境では再コピー・再置換は不要。Git 管理外のため、別環境への clone ではこの生成結果は含まれない。BCM への取込みは未実施。
 
 ### 3. node004 の設定を保存し、最後に MAC を登録する
 
@@ -391,6 +395,29 @@ xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd docs/exampl
 ```
 
 公開文書には匿名化した実行場所と既存の公開可能な検証用値を使い、実ヘッド名・ディスクバックエンド・UUID・指紋・認証情報は追加しない。実ディスクの照合、BCM 設定適用、初回作成、AUTO / FULL 後の保持・活性化、TopoLVM 連携は引き続き未確認。公開・push と過去の履歴全体の再監査は今回の対象外。
+
+## 2026-09-23: worker1 の起動前構成確認と node004 用 XML 準備
+
+目的は、利用者が実行した [手順 1](#1-物理ホストでディスクと-nic-を確定する) の出力を確認し、node004 用 XML のデバイス名を具体化すること。整理日は 2026-09-23、利用者の実行日時・各コマンドの終了コード・libvirt のバージョンは未記録。実行場所は KVM / libvirt 物理ホストで、VM 定義を読み取れる権限を使用。以下をこの順で実行した出力が共有された。
+
+```bash
+virsh domstate tk8s-worker1
+virsh domiflist tk8s-worker1 --inactive
+virsh domblklist tk8s-worker1 --inactive --details
+virsh dumpxml tk8s-worker1 --inactive
+```
+
+期待結果は停止中の worker1、計画どおりの NIC、OS と追加ディスクの区別、UEFI / 内部 NIC 優先。提供出力はこの確認範囲で整合した。構成の確認値は [環境構成](environment.md#2026-09-23-worker1-の起動前構成確認) に集約する。XML の description にある空ディスク・容量の記述は作成時の説明であり、現在のディスク内容・virtual size の実測として扱わない。実際の IPv4 PXE 動作・BCM 登録・初期化・OS 起動はこの出力では確認できない。
+
+Codex が続けて実行した操作（BCM ヘッドのリポジトリ内、root 権限）:
+
+1. `git status --short --untracked-files=all` は変更なし。README・本書・環境構成・VM 一覧・進捗・保守手順・添付を `cat` / `rg` / `sed` で読んだ。サブエージェントも README・添付・本書を読み取り、ディスク対応と未確認事項を独立に照合した。読み取りは成功し、実ホスト名等を報告へ転記しなかった。
+2. Python の pathlib / os で添付原本を `input/70-worker-lvm/2026-09-23-worker1-libvirt.txt` へ保存した。保存は新規作成のみ・既存ファイル上書き禁止・mode 0600。ElementTree で VM 名と 2 ディスクの target / バックエンド用途を照合した。
+3. `docs/examples/worker-initial-lvm.xml` と `worker-os-only.xml` を Python で読み、文字列 `/dev/OS_DISK` → `/dev/vda`、`/dev/TOPO_DISK` → `/dev/vdb` を置換。それぞれ `input/70-worker-lvm/node004-initial.xml`、`node004-os-only.xml` へ同じ新規作成条件で保存した。テンプレート自体は変更していない。
+4. [手順 2](#2-bcm-ヘッドで初回用運用用-xml-を用意する) の xmllint / `disks validate nodetect` を生成した各 XML に実行し、計 4 コマンドすべて終了コード 0。初回用は `/dev/vda` + `/dev/vdb`、運用用は `/dev/vda` だけ、OS 定義は一致することを ElementTree で追加確認した。デバイス検出・初期化は行っていない。コマンド・時刻・終了コード・出力は `input/70-worker-lvm/2026-09-23-node004-prepared-xml-validation.json` に保存した。
+5. 本書・環境構成・進捗を更新。Python の pathlib / re / unicodedata で変更 3 文書の相対リンク・アンカー 96 件とコードブロックを確認し、`git diff --check` も成功。`git ls-files -- input` は空で、`git check-ignore -v` は新規保存した原本・XML・検証結果がすべて `/input/` で除外されることを示した。保存時は [保守手順](repository-maintenance.md#保存前の確認コミット手順) に沿ってステージ済み内容・公開情報を確認する。公開文書では物理ホストのユーザー名・ホスト名・バックエンド絶対パス・UUID・シリアル・VNC 接続先を省略し、公開可能と確認済みの検証用値だけを使う。
+
+生成 XML は適用可能な候補として準備した段階。BCM の set / commit、MAC・IP 登録、VM 起動、ディスク操作は実行していない。残る確認は両ディスクの容量・初期化してよい内容、[手順 3](#3-node004-の設定を保存し最後に-mac-を登録する) 以降の設定適用・起動・保持試験。node005・006 の実デバイス対応も未確認。
 
 ## 根拠と適用範囲
 

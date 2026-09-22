@@ -23,7 +23,7 @@
 | cp2 の構成・起動後状態 | 実機確認・FULL 完了 / UP / SSH | 提供ログに続き、Codex が同期ログ・公開鍵認証・fstab・OS 内部・通信を直接確認。再起動後は未確認。[最新構成](environment.md#2026-09-23-node001003-の直接確認) |
 | cp3 の NIC・起動後状態 | 実機確認・FULL 完了 / UP / SSH | 提供ログに続き、Codex がゲスト IP・ディスク・UEFI 起動・OS 内部・通信を直接確認。libvirt の起動前構成・永続定義は未確認。[最新構成](environment.md#2026-09-23-node001003-の直接確認) |
 | PXE 対象 6 台の DHCP 要求送信 | 確認済み（初期記録） | 初期 `docs/vm-list.md` の記載。BCM からの応答・OS 展開成功までは示していない |
-| ワーカーの追加 NIC・ディスク | 確認済み（初期記録） | QEMU での認識を確認したとの記載。ゲスト OS 内での利用確認とは区別する |
+| ワーカーの追加 NIC・ディスク | worker1 の永続定義を提供ログ確認 | 停止中、OS vda / TopoLVM vdb、内部 NIC 優先・Multus ROM 無効、UEFI / Secure Boot 無効の定義を確認。実容量・内容・ゲスト内認識は未確認。worker2・3 は初期記録を引き継ぐ。[構成](environment.md#2026-09-23-worker1-の起動前構成確認) |
 | BCM インストールメディアの整合性チェック | 画面確認 | [BCM インストール記録](bcm-installation.md) の S05 に成功表示あり |
 | BCM インストーラーでの設定 | 画面確認 | 30 枚を [BCM インストール手順と設定記録](bcm-installation.md) に整理。S22 の Summary と S23～S30 の Show config まで確認 |
 | BCM のインストール完了・再起動後の稼働 | 実機確認 | 利用者の導入完了報告に加え、Ubuntu と CMDaemon の稼働を確認。DHCP・DNS・HTTP・NFS・SSH・NTP は active。OS / パッケージ版は [環境構成](environment.md#2026-09-22-の稼働後確認)。インストーラーの完了ログ自体は未取得 |
@@ -40,14 +40,14 @@
 | R-01: BCM による 6 台への OS 展開 | 3 / 6 台で初回展開・起動後の基本確認完了 | node001～003 の FULL 同期完了・UP・SSH・ディスク上のルート・失敗サービス 0 件・外部 HTTPS を確認。ワーカー 3 台は MAC 未登録・DOWN / unassigned。[一括確認](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認) |
 | R-02: Kubernetes クラスタ構築・基本動作 | 未確認・管理画面の表示まで | Base View B06 は Cluster Creation の Launch を表示するが、ウィザード実行・作成完了の証跡ではない。コントロールプレーン 3 台・ワーカー 3 台が目標。構築後・再起動後の swap 無効を確認する。[画面証跡](bcm-base-view.md#2026-09-23-ブラウザー接続と管理画面の確認)・[BCM 実装調査と選択肢](bcm-pxe-provisioning.md#kubernetes-と-swap) |
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
-| ワーカーの LVM 初期化 | 適用手順と 2 種の XML を準備・静的検証済み、実初期化は未実施 | BCM の VG 定義に LV 1 個以上が必要と確認。VG + 4 MiB raw seed の初回用と OS だけの運用用 XML は XSD / node-installer validate nodetect に成功。node004～006 は 01:38 JST の照会でも未登録・DOWN。実ディスク識別、初回作成・再起動保持・PVC 動作は未確認。[適用手順と調査記録](worker-storage.md) |
+| ワーカーの LVM 初期化 | node004 用の実デバイス名を反映した XML 2 種を準備・静的検証済み、実初期化は未実施 | VG + 4 MiB raw seed の初回用（vda + vdb）と OS だけの運用用（vda）は XSD / node-installer validate nodetect に成功。01:38 JST の BCM 照会では未登録・DOWN、その後の設定適用は未実施。初回作成・再起動保持・PVC 動作は未確認。[実施記録](worker-storage.md#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
 
 要件 ID と確認条件は [検証要件](requirements.md) を参照してください。
 
 ## 次の作業
 
-1. コントロールプレーン用 3 台の初回展開後確認は完了。了承された初回 VG 作成方式の [適用手順](worker-storage.md#適用確認の順序未実行) に従い、OS / 追加ディスクを識別する。node004 の専用設定・IP 調整・MAC 登録後、先行展開と LVM・運用用レイアウトへの切替・データ保持を検証してから node005・006 へ広げる。設定変更・起動はまだ実施していない。
+1. コントロールプレーン用 3 台の初回展開後確認は完了。worker1 の OS / 追加ディスク対応を反映した node004 用 XML は準備済み。両ディスクの容量と初期化してよい内容を確認し、[適用手順 3](worker-storage.md#3-node004-の設定を保存し最後に-mac-を登録する) の専用設定・IP 調整・MAC 登録へ進む。先行展開と LVM・運用用レイアウトへの切替・データ保持を検証してから、個別にディスクを識別して node005・006 へ広げる。設定変更・起動はまだ実施していない。
 2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを別途確認する。ヘッドの shorewall6 / fwupd-refresh の失敗原因・対応は今回再検証しておらず、別途確認する。
 3. Kubernetes のコントロールプレーン・etcd の配置と、[ネットワークのアドレス設計](requirements.md#構築前に確認する事項) を確定して構築し、各ノードの役割・Ready 状態と基本動作を確認する。
 4. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。
