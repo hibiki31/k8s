@@ -25,6 +25,10 @@
 | 起動状態と UP | §5.5 pp.290–292 |
 | 複数の blockdev が候補になる意味 | §D.3.1 p.953 |
 
+## Base View の接続・認証
+
+2026-09-23 にローカル版 `admin-manual.pdf`（BCM 11 / Revision `47eff3c` / 2026-09-21）を追加確認した。§2.4.1 pp.38–39 に HTTPS 8081 と `/base-view`、§2.3.1 pp.34–35・§2.3.3 pp.36–37 に管理パスワードと認証、§2.6–2.6.1 pp.82–83 に CMDaemon と `cmd.service`、§6.5 pp.340, 346 に root の権限と Base View 認証の説明がある。紙面・PDF 通しページは一致。[接続手順と本環境の実測](bcm-base-view.md) を参照。
+
 ## 製品PDF一覧
 
 以下のファイルはすべて `input/10-bcm-installer-manual/` 配下です。「表紙・目次」の資料は用途と参照先を整理した段階で、本文の確認は今後行います。
@@ -33,7 +37,7 @@
 |---|---|---|
 | `installation-manual.pdf` | ヘッドノード導入、初回起動、通常ノードの起動、ライセンス | 表紙・目次と、後述の導入・構成・ライセンス関連本文 |
 | `containerization-manual.pdf` | Kubernetes構築、ネットワーク、ストレージ、Operator | 表紙・目次と、後述のKubernetes関連本文 |
-| `admin-manual.pdf` | BCMの管理操作、ソフトウェアイメージ、ノード展開、ディスク構成 | 表紙・目次と、[PXE 手順](bcm-pxe-provisioning.md#根拠と適用範囲) に示すディスク設定・識別・インストールモード・ログの本文 |
+| `admin-manual.pdf` | BCMの管理操作、ソフトウェアイメージ、ノード展開、ディスク構成 | 表紙・目次、[PXE 手順](bcm-pxe-provisioning.md#根拠と適用範囲) のディスク設定・識別・インストールモード・ログ、上記 Base View の接続・認証 |
 | `user-manual.pdf` | クラスタへのログイン、環境モジュール、MPI、ジョブ実行 | 表紙・目次。利用者向け操作が必要になった段階で参照 |
 | `developer-manual.pdf` | BCM Python API、監視データの収集・アクション | 表紙・目次。自動化や監視拡張が必要になった段階で参照 |
 | `upgrade-manual.pdf` | BCMの並行移行・インプレース更新、関連アプリケーションの更新 | 表紙・目次。更新検証を行う段階で参照 |

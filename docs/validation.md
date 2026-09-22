@@ -25,6 +25,7 @@
 | BCM インストールメディアの整合性チェック | 画面確認 | [BCM インストール記録](bcm-installation.md) の S05 に成功表示あり |
 | BCM インストーラーでの設定 | 画面確認 | 30 枚を [BCM インストール手順と設定記録](bcm-installation.md) に整理。S22 の Summary と S23～S30 の Show config まで確認 |
 | BCM のインストール完了・再起動後の稼働 | 実機確認 | 利用者の導入完了報告に加え、Ubuntu と CMDaemon の稼働を確認。DHCP・DNS・HTTP・NFS・SSH・NTP は active。OS / パッケージ版は [環境構成](environment.md#2026-09-22-の稼働後確認)。インストーラーの完了ログ自体は未取得 |
+| Base View の接続 | ヘッドから HTML 配信確認・ブラウザー未確認 | 9 月 23 日に cmd active、TCP 8081 待受を確認。通常の curl は証明書チェーンの検証で失敗（終了 60）。認証情報なしの単発 `-k` GET は HTTP 200、title は Base View。既存のポート転送・ブラウザー Proxy はユーザー報告で整備済み。Proxy 経由の画面表示・ログインは未確認。[接続手順・証跡](bcm-base-view.md) |
 | SSH 公開鍵・Codex CLI | 設置を実機確認・node002 接続を提供ログ確認 | authorized_keys の存在・非空・権限と CLI 0.155.1 を確認。node001 は公開鍵認証で成功。node002 も root ログイン成功、ED25519 ホスト鍵の新規保存表示あり。node002 の認証方式・指紋の別経路照合は未記録。残り 4 台は未検証 |
 | OS 全体のサービス状態 | 失敗ユニットあり | 22 時台は shorewall6 の 1 件（IPv6 interfaces 未定義、IPv4 shorewall は active）。23:26 の確認では fwupd-refresh も失敗し、計 2 件。fwupd-refresh の原因とライセンス登録との関連は未調査。CMDaemon は active |
 | BCM のライセンス条件 | 登録完了・実機確認 | Free / Advanced、Licensed nodes は使用 1／上限 10。ヘッドを含む 7 台の要件を満たす。`verify-license verify` は終了コード 0、確認時点で有効期間内。正確な有効期間は Git 管理外の証跡に保持し、公開文書では省略する。登録前の Temporary / 上限 2 から更新。[登録手順と証跡](bcm-licensing.md) |
