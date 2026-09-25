@@ -116,6 +116,59 @@ kubectl -n etcd-restore-check get configmap,serviceaccount,service,deployment -o
 
 実施時は、API server / etcd / Kubernetes component の停止・開始、member overlay の変更、各 member の再参加、失敗と再試行を実行順に記録する。途中で前提が一致しない、snapshot が読めない、spool が空でない、旧 member が動作している等の場合は続行しない。
 
+### 復元後の `update_configmap` / `update_apiserver` の意味
+
+2026-09-25 の追加調査。ユーザーから、別案件で `cm-kubeadm-manager` の両操作と、`update_apiserver` に headnode を指定する手順が使われていたとの情報を受けた。手順原本・版・実行日時・出力は未共有。本ヘッドと [NVIDIA の公開案内](https://docs.nvidia.com/dgx-superpod/update-guide/latest/kubernetes-updates.html) で確認できた名前は **`cm-kubeadm-manage`（末尾の r なし）** だった。別案件の名前が誤記、alias、独自 wrapper のいずれかは未確認であり、以下は本ヘッドにある BCM 11 版の動作を説明する。
+
+etcd snapshot の復元により Kubernetes 内の `kube-system/kubeadm-config` もバックアップ時点へ戻る。一方、BCM の管理設定と各ノード上の設定ファイルは、etcd snapshot の復元では巻き戻らない。復旧時に etcd の構成・接続先を変えた場合、これらを復旧後の実構成に合わせる目的で両操作を使うと考えられる。
+
+| 操作 | 今回の版で確認できた更新内容 | 引数・依存関係 |
+|---|---|---|
+| `update_configmap` | BCM の対象 etcd cluster の member 割当から接続先を求め、`kube-system/kubeadm-config` の `data.ClusterConfiguration` 内の `etcd.external.endpoints` を更新する。BCM の Kubelet role のオプションも扱い、各 control-plane ノードへ `/root/.kube/kubeadm-init-<KUBE_CLUSTER>.yaml` を書き出す | ノード引数なし。BCM が実効 Kubelet role の `controlPlane` を有効と認識する対象ノードへ配布する。Kubernetes API への接続と対象ノードへの SSH が必要 |
+| `update_apiserver <NODE>` | 指定ノードの API server–etcd 間のクライアント証明書・鍵を再生成する処理を呼び、必要に応じて etcd CA 証明書を補う。ノード上の kubeadm-init YAML から `kube-apiserver.yaml` を再生成し、`crictl` で既存 API server Pod を停止・削除して kubelet に再作成させる | ノード引数は更新先の SSH 接続先。ConfigMap を自ら取得・更新する処理はなく、更新済みのローカル YAML が必要 |
+
+`update_configmap` の接続先の根拠は **BCM の overlay の割当**であり、etcd の実メンバーを照会して自動修正する処理ではない。learner 用として扱われる overlay は除外する。実メンバーと BCM の割当が一致していることが前提となる。任意のアプリケーション用 ConfigMap を復元するコマンドでもない。
+
+`update_apiserver` 内の証明書処理は、この版では既存の etcd CA 証明書を無条件には上書きしない。また、API server がクライアントへ提示するサーバー証明書を更新する `update_apiserver_cert` は別操作である。証明書に関係するという理由だけで、これらを同じ操作とは扱わない。
+
+API が利用でき、BCM の member 割当を確定済みなら、設定更新の依存順は `update_configmap` → `update_apiserver <各CP>` となる。ConfigMap の変更だけでは稼働中の API server の `--etcd-servers` に自動反映されないことは、[Kubernetes の再設定手順](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-reconfigure/#reflecting-clusterconfiguration-changes-on-control-plane-nodes) とも整合する。
+
+ただし、全 API server が停止中または復旧先 etcd へ接続できない場合、`update_configmap` は ConfigMap の読み取りから失敗する。その場合の最初の API server の復旧方法は、既存 YAML の正しさと対象版の復旧手順に依存する。先に `update_apiserver` を実行する手順にもこのような前提があり得るため、手順全体を確認せず順番だけを入れ替えない。同じ接続先・設定へ戻す復元なら、snapshot を戻したという事実だけで両操作が毎回必須になるわけではない。
+
+両操作は更新・再起動を伴う復旧後の設定整合であり、[復元結果の簡易確認](#5-復元結果を簡易確認する) とは別の作業である。今回の調査では実行していない。
+
+### `update_apiserver` に headnode を指定する理由の推測
+
+BCM の headnode と Kubernetes の control-plane は兼任できる役割である。`input/10-bcm-installer-manual/containerization-manual.pdf`（BCM 11、Revision `47eff3c`、2026-09-21）の §4.1 p.28 は headnode または専用ノード上の control plane を説明し、§4.2.8 pp.43–44 は headnode が control-plane / etcd として初期選択されると説明している。紙面と PDF 通しページは一致する。
+
+| 仮説 | 今回の根拠と判断 |
+|---|---|
+| その案件では headnode も API server を動かしていた | 最有力。専用 CP ノードとは別に「headnode」と列挙していても、Kubernetes 上の役割は CP 兼任の可能性がある。復旧時だけ headnode を CP として使っていた場合も含むが、後者の証拠は未共有 |
+| CP 兼任構成の手順が管理専用 headnode の構成へ流用された | headnode が本当に CP でなければ有力。headnode でコマンドを実行することと、引数で headnode を更新対象にすることが混同された可能性もある |
+| 別案件の旧版・独自 wrapper に固有の処理がある | コマンド名の表記が異なり、版も未確認のため排除できない。手順原本と実体を確認するまで、本ヘッドの動作だけでは断定できない |
+
+本ヘッドの `update_apiserver <NODE>` は、引数を与えた後にそのノードの CP role を検証する処理がない。headnode 指定でも、対象上の証明書・マニフェスト更新と Pod 再起動を試みる。「headnode を指定すれば全 CP が更新される」「管理専用なので自動でスキップされる」とは扱えない。
+
+次の理由だけで headnode を追加する根拠は確認できなかった。
+
+- **NGINX API プロキシが動いている**: マニュアル §4.1 p.28 は headnode にもプロキシを配置すると説明するが、これは API server 本体とは別で、当該操作は NGINX の設定更新を行わない。
+- **etcd member である**: etcd と CP は別の役割なので、etcd だけを動かすノードは API server 更新先とは限らない。
+- **kubeconfig・証明書・kubeadm-init YAML がある**: 本ヘッドのセットアップ実装は、最初の CP が別ノードでも headnode に管理用ファイルを配置する。ファイルがあることだけでは CP 兼任の証明にならない。
+
+対象環境での確認は、実効 Kubelet role の `controlPlane`、API server Pod の配置、ノード上の静的 Pod マニフェストと実プロセスを照合する。`kubectl get nodes` のラベル表示だけで決めず、障害時に Pod 情報が古い可能性も考慮する。
+
+以下は **別環境では未実行の読み取り確認例**。BCM ヘッドの root shell で、対象クラスタ用 kubectl / kubeconfig を利用する。`<KUBE_CLUSTER>` は実クラスタ名へ置換する。
+
+```bash
+type -a cm-kubeadm-manager cm-kubeadm-manage
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --help
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --kube-cluster <KUBE_CLUSTER> status
+kubectl --kubeconfig=/root/.kube/config-<KUBE_CLUSTER> -n kube-system \
+  get pods -l component=kube-apiserver -o wide
+```
+
+さらに Base View で当該 headnode の Kubelet role、対象 cluster、Control plane の値と割当元 overlay を確認する。headnode 自身では `/etc/kubernetes/manifests/kube-apiserver.yaml` の有無と、対象 container runtime に接続する `crictl ps -a --name kube-apiserver` の結果を確認する。既存ファイルの残骸と稼働中のコンポーネントは区別する。出力の接続先や認証情報は Git 管理外に保持する。
+
 ## 5. 復元結果を簡易確認する
 
 API server が再開した後、[`examples/verify-etcd-restore.sh`](examples/verify-etcd-restore.sh) を BCM ヘッドの root shell から実行する。第 1 引数は BCM 上の Kubernetes cluster 名、第 2 引数は検証 namespace 名で、省略時は `default` と `etcd-restore-check`。
@@ -163,3 +216,23 @@ kubectl delete namespace etcd-restore-check
 6. ステージした 8 ファイルの全差分と公開情報を確認した。検出された `Secret` は snapshot と証跡の保護を求める一般説明だけで、実値はなかった。実接続情報、認証情報、個人・組織情報、第三者資料の転載、画像、バイナリは含まれない。`input/` の追跡ファイルはなく、除外設定も有効だった。既定の Git identity には公開に適さないホスト識別情報が含まれたため、コミット時は公開用の `Codex <codex@openai.com>` を明示して使用する。
 
 期待結果は、復元前後を識別でき、秘密情報を含む全クラスタ export を必要としない簡易判定を定義すること。実際の結果は、専用 namespace と限定 resource による正負の判定条件、読み取り専用の検証スクリプト、安全停止条件を文書化した。実リストアの成功を示す結果ではない。
+
+## 2026-09-25: kubeadm 設定整合と headnode 指定の追加調査記録
+
+- 実行者: Codex。ユーザーからは別案件の手順の存在だけが共有され、その環境で今回コマンドを実行したとの報告はない。
+- 目的・対象: 復元後の両 update 操作の説明と headnode 指定の理由の推測。本リポジトリがある BCM ヘッドでの読み取りと文書更新が対象。更新コマンド・クラスタへの照会は実行しない。
+- 実施時刻: 個別操作の全時刻は未記録。ヘルプ照会と `date --iso-8601=seconds` は 14:26:39–14:26:40 JST。
+- 版: `cmdaemon` は `11.0-165270-cm11.0-14a0291f4f`、`cm-setup` は `11.0-124257-cm11.0-7f8393643d`。対象の `/cm/local/apps/cmd/scripts/cm-kubeadm-manage` は 41,879 bytes、mode 700、mtime 2026-09-10 01:22:14 JST、SHA-256 `5f30f868d3fde2b1123a4953bc0507d1c68c0acfc8a1d7641a23371748624427`。
+
+実行順と結果:
+
+1. `git status --short --untracked-files=all` で開始時の変更がないことを確認し、README、AGENTS、既存 etcd 手順、製品資料索引、関連文書を読んだ。`command -v cm-kubeadm-manager` は出力なし。`rg --files` で末尾が `manage` の実体を発見し、`stat`、`dpkg-query -S` / `-W`、`sha256sum` でファイルと所有パッケージを確認した。コマンド名や関連語の検索で終了 1 となった箇所は該当なしとして扱った。
+2. `rg -n`、`sed -n`、`nl -ba` で実体の `get_master_data`（75–110 行）、`get_expected_endpoints`（262–286 行）、`update_configmap`（309–585 行）、`update_apiserver`（588–590 行）、`update_control_plane_component`（655–686 行）、証明書処理（689–766 行）、引数・dispatch（842–919 行）を読んだ。BCM role、ConfigMap、ノード上ファイル、API server Pod の依存関係を確認した。原本のソースコードは転載しない。
+3. `/cm/local/apps/cm-setup/lib/python3.12/site-packages/cmsetup/plugins/kubernetes/stages/kubeadm.py` の初期 CP 選定と headnode への管理用ファイル配置処理を読んだ。headnode に kubeadm-init YAML があるだけでは CP と判定できないことを確認した。既存 etcd 復旧処理も読み取り参照した。
+4. `PYTHONPATH=/tmp/bcm-pdf-read python3` と pypdf で上記 Containerization Manual を検索した。対象コマンド名・両 subcommand の本文検索は 0 件。表紙、§4.1 p.28、§4.2.8 pp.43–44 は headnode の役割・NGINX・初期選択の根拠として読んだ。
+5. NVIDIA の [BCM 11 Release Notes](https://docs.nvidia.com/base-command-manager/bcm-11-release-notes/overview.html) と [DGX 更新手順](https://docs.nvidia.com/dgx-superpod/update-guide/latest/kubernetes-updates.html)、Kubernetes の [再設定手順](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-reconfigure/) と [kubeadm init phase](https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm-init-phase/) を閲覧した。DGX ページの BCM KB リンクは閲覧ツールが Internal Error を返し、該当 KB の内容は確認できなかった。関連語の Web 検索でも両操作の別案件手順を取得できなかった。
+6. 絶対パスで `--help`、`--kube-cluster default update_apiserver --help`、`--kube-cluster default update_configmap --help` を実行した。いずれも終了 0、ログ先が読み取り専用という警告あり。引数の解釈段階で終了するヘルプだけを確認し、更新処理も `status` も実行していない。
+7. 本書へ上記説明・推測・未実行の確認方法を追記し、README の索引と製品資料索引を更新した。Python で変更した 3 文書の相対リンク・見出しアンカー・コードフェンス・末尾改行を確認し、`git diff --check` とあわせて成功した。
+8. [既存の保存前手順](repository-maintenance.md#保存前の確認コミット手順) で対象 3 文書をステージし、対象一覧・全差分・空白エラー・作業ツリーとの一致・公開情報の補助検索を確認した。`input/` の追跡はなく、対象 PDF は除外されていた。環境文書のパスワードは既存のプレースホルダーを維持している。追加内容は操作の独自説明、公式 URL、公開製品の版・ファイル識別情報で、認証情報・実接続情報・第三者原本の転載はなく、削除・匿名化を要する問題はなかった。追記後にも再ステージして確認する。コミットは公開用の `Codex <codex@openai.com>` を使用し、ID と残変更は完了報告に記す。
+
+期待結果は、確定できる挙動と案件依存の推測を切り分けること。実際には、ConfigMap / ローカル YAML / static Pod の更新範囲と、headnode を全 CP 更新の代表引数とは扱えないことを確認した。証跡は本タスクのツール出力、上記ファイル・版・行番号、一次 PDF の該当ページ、公式 URL、Git 差分。別案件の正確なコマンド実体、role、実行順、実行結果は未確認。本環境の構成・検証進捗に変更はない。

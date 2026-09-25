@@ -101,6 +101,8 @@ etcd のメンバー管理・バックアップ用 `cm-etcd-manage` の提供状
 
 同日に [etcd バックアップ・リストア試験](etcd-backup-restore.md) を作成した。Snapshot 取得例は [NVIDIA DGX Kubernetes Updates](https://docs.nvidia.com/dgx-superpod/update-guide/latest/kubernetes-updates.html)、API server 停止を含む復元原則と snapshot status は [Kubernetes: Operating etcd clusters](https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/)、新しい logical cluster として復元する性質は [etcd 3.5 Disaster recovery](https://etcd.io/docs/v3.5/op-guide/recovery/) を根拠とした。BCM の multi-member 復旧順は公開資料で確認できず、未確定としている。
 
+同日の追加調査で [復元後の `update_configmap` / `update_apiserver` と headnode 指定](etcd-backup-restore.md#復元後の-update_configmap--update_apiserver-の意味) を整理した。本ヘッドの `cm-kubeadm-manage` 実装・ヘルプ、ローカル Containerization Manual（Revision `47eff3c`、2026-09-21）の §4.1 p.28 と §4.2.8 pp.43–44、および [Kubernetes の再設定手順](https://kubernetes.io/docs/tasks/administer-cluster/kubeadm/kubeadm-reconfigure/) を根拠とする。別案件の版・実装・headnode の実効 role は未共有であり、その指定理由は推測として記録した。
+
 | 項目 | 章・PDFページ | 資料で確認できた内容と本検証での扱い |
 |---|---|---|
 | 導入方式と版 | 第4章 p.27、§4.2 pp.28-29 | BCMはKubernetesの導入にkubeadmを使用する。導入可能な版は `cm-kubernetes-setup --list-versions` と実パッケージで確認し、本環境の採用版を決める |
