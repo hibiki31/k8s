@@ -280,6 +280,38 @@ API 疎通が失敗する場合は、本環境の内部ネットワーク、BCM 
 
    期待結果は `Ready=True` の継続、Lease の更新再開、ログで更新失敗が反復しないこと。timeout は未復旧として記録する。Pod や CNI の動作は別途確認し、Node Ready だけでクラスタ全体の復旧完了にしない。
 
+### 4.4 `Error updating node status, will retry` と `connection refused`
+
+kubelet の状態更新時に TCP 接続が拒否された場合は、ログにある宛先 IP・ポートを起点に調べる。主な候補は API / proxy の待受停止、誤った接続先、firewall の REJECT。証明書検証より前の接続段階なので、この表示だけを根拠に証明書を更新しない。次は未実行の調査例で、4.3 と同じ権限・置換規則を使う。
+
+1. **障害ノード**で拒否された宛先を特定する。ログの `dial tcp ...: connect: connection refused` を含む行を確認する。
+
+   ```bash
+   sudo journalctl -u kubelet --since '-10 minutes' --no-pager -n 200
+   sudo grep -E '^[[:space:]]*server:' /etc/kubernetes/kubelet.conf
+   nc -vz -w 5 '<API_HOST>' <API_PORT>
+   ```
+
+   kubeconfig のパスは 4.3 の方法で実際のものを確認する。ログの IP と設定のホスト名の対応は `getent hosts '<API_HOST>'` で確認する。`127.0.0.1` / `::1` なら対象ノード自身の API またはローカル proxy、VIP / LB ならその待受と backend、CP の IP なら該当 CP を確認する。宛先不明のまま kubelet.conf を書き換えない。
+
+2. **API が動作するはずのコントロールプレーン**で待受とコンテナを確認する。下記の 6443 は標準ポートの例で、実際の API ポートへ置き換える。LB の frontend ポートと backend の API ポートは異なる場合がある。
+
+   ```bash
+   sudo ss -lntp 'sport = :6443'
+   sudo crictl ps -a --name kube-apiserver
+   sudo crictl logs --tail=100 <APISERVER_CONTAINER_ID>
+   ```
+
+   ID は一覧で作成時刻を確認し、最新の失敗コンテナを含めて選ぶ。`crictl` は kubelet と同じ CRI endpoint を使う設定が前提。接続エラーなら runtime / endpoint を確認し、コンテナ不在と決めつけない。API 停止中でも runtime から直接ログを取得できる。[公式 crictl 手順](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/) を参照。
+
+3. **ログに応じて分岐**する。API コンテナがない場合は CP 上で `sudo systemctl status kubelet --no-pager -l`、kubelet ログ、`sudo ls -l /etc/kubernetes/manifests/` を確認する。static Pod は kubelet が管理するため、存在を確認せず `systemctl restart kube-apiserver` を実行しない。待受があるのにリモートから拒否される場合は bind address、宛先の対応、firewall を確認する。
+
+   API ログが etcd 接続失敗を示す場合のみ、実際の etcd 宛先と配置を確認する。ローカル static Pod 型なら `sudo crictl ps -a --name etcd` と `sudo crictl logs --tail=100 <ETCD_CONTAINER_ID>` を使う。BCM の外部 etcd / systemd 構成では実際の etcd ホストとサービスを調査し、CP に etcd コンテナがないことを異常と断定しない。etcd 復元をやり直す前に API ログの原因を確定する。
+
+   LB 宛先の場合は LB ホストで frontend の `ss`、採用サービスの状態・ログと backend API の疎通を確認する。HAProxy 等の製品や配置は未確認なので固定しない。
+
+期待結果は、拒否された宛先と停止・誤設定箇所を特定すること。復旧後は 4.3 の Ready / Lease 確認へ戻る。次に共有する最小限の証跡は、拒否された宛先を含むエラー行（IP は匿名化可、ポートと自己 / 別 CP / VIP の対応は残す）、API 待受・コンテナ一覧、最新の API エラーログ。生の kubeconfig は共有しない。
+
 ## 5. 観測結果から原因を確定する
 
 | 証拠の組み合わせ | 判定 | 復旧方針 |
@@ -371,3 +403,11 @@ API 疎通が失敗する場合は、本環境の内部ネットワーク、BCM 
 - 保存手順: `git diff --check`、Markdown のコードブロック・相対リンク確認後、対象 2 文書を `git add`。`git diff --cached --name-status` / `--check` / 差分全文と関連文脈、秘密情報候補、`git ls-files -- input`、`git check-ignore -v -- input/publication-check.txt` を確認してコミットする。コミット名義は公開用の `Repository Maintainer <maintainer@example.invalid>` を使用。コミット後は `git status --short` と ID を確認する。
 - 期待結果: 診断と条件付き起動・復旧確認の手順を、実行済み調査と分けて保存する。実際の成果は 4.3 の手順追加と検証状況への報告反映。実環境用コマンドはすべて未実行で、復旧成否は未確認。
 - 公開確認範囲: 今回のステージ済み 2 文書の差分と文脈、ファイル名・コミット情報・input 非追跡と除外。実値は追加せず、ノード名・接続先は置換用表記。原本転載なし。公開・push と過去履歴全体の監査は対象外。確認結果と残変更は完了報告に記載する。
+
+## 2026-09-25: connection refused の追加切り分け記録
+
+ユーザーから `error updationg node status will retry, connection refused` と表示されるとの報告を受けた。表記は報告のまま保存し、4.4 では通常のログ表記を見出しにした。ユーザーの実行コマンド・時刻、ログ全文・宛先、対象版・環境は未記録。kubelet 再起動の実施や成否は推定しない。
+
+Codex はリポジトリのルートで `git status --short --untracked-files=all`、README の `cat`、既存手順・検証状況の `sed` / `tail`、環境・etcd 文書の `rg` を実行した（終了 0、開始時変更なし、長い出力は一部省略）。Kubernetes 公式の kubeadm トラブルシューティングと crictl 手順を Web で確認し、Python で 4.4 と検証状況を更新した。ツール版は前回確認の Git 2.43.0 / Python 3.12.3 を引き継ぎ、今回は再確認していない。実環境には接続していない。
+
+目的・期待結果は TCP 接続拒否の宛先に応じて API / LB / runtime / etcd を順に調べる手順の保存。実際の成果は調査手順と利用者報告の反映で、原因・復旧は未確認。証跡は今回のチャット・ツール出力・Git 差分と [公式 crictl 手順](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/)（2026-09-25 閲覧）。上記の保存手順で Markdown・リンク・ステージ済み差分・公開情報・input 除外を確認して、公開用汎用名義でコミットし、ID と残変更を完了報告に記載する。対象は本書と検証状況の 2 文書。実値や原本は追加せず、接続情報はプレースホルダー。過去履歴の監査・公開・push は対象外。

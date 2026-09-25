@@ -16,6 +16,8 @@
 
 2026-09-25 の追加報告で、NotReady の Conditions に `kubelet stopped posting node status` とあることが分かった（ユーザー報告、原出力未共有）。対象環境と先の CIDR 障害・etcd 復旧との関連は未確認。[状態更新停止の確認と条件付き復旧手順](kubernetes-cidr-troubleshooting.md#43-kubelet-stopped-posting-node-status-の確認と条件付き復旧) に従い、対象ノードの kubelet ログと API 到達性を優先して確認する。Codex による実環境操作・復旧確認は未実施。
 
+続いて状態更新エラーと `connection refused` の表示が報告された。宛先・原ログ・実行操作は未共有。[接続拒否の切り分け](kubernetes-cidr-troubleshooting.md#44-error-updating-node-status-will-retry-と-connection-refused) で API / LB の待受と API コンテナのログを確認する段階。原因・復旧は未確認。
+
 ## 現在の状況
 
 | 項目 | 状態 | 根拠・確認範囲 |
