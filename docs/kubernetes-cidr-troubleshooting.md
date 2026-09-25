@@ -458,3 +458,64 @@ kube-apiserver はこの構成では kubelet 管理の static Pod。API が使�
 Codex の実施記録: 2026-09-25、リポジトリルートで `git status --short --untracked-files=all`（変更なし）、README / 既存切り分け / 検証状況を `sed` / `tail` で確認。長い出力は一部省略された。ローカル `/cm/local/apps/cmd/scripts/cm-kubeadm-manage` の 53–67、655–688 行を読み、module 読み込みと manifest 生成・sandbox 停止削除の順を確認した（版は前回のローカル調査結果を引き継ぐ）。Web で上記 Kubernetes 公式資料を照合（2026-09-25）。ユーザーへ直前操作の共有を依頼し、Python で本書と検証状況を更新した。目的・期待結果は一覧条件・runtime・manifest・kubelet を分けて再作成失敗を調べること。実際の成果は診断手順とユーザー報告の保存で、実環境コマンドは未実行。原因と復旧は未確認。
 
 保存時は変更 2 文書の Markdown・リンク・ステージ済み差分・公開情報・input 非追跡と除外を確認して公開用汎用名義でコミットする。実ノード名は匿名化し、認証情報・接続実値・原本は追加しない。証跡はユーザーチャット・ツール出力・Git 差分。push と過去履歴全体の監査は対象外。
+
+
+## 2026-09-25: 別 CP の kubelet が config.yaml の生成待ちになる
+
+### ユーザー報告と判定範囲
+
+先に API コンテナを調査した CP は正常復旧したとの報告を受けた。復旧に使用した最終コマンド・実行日時・Ready / API / etcd の原出力は未共有。続いて別の CP の `/var/lib/kubelet/` が空で kubelet.service が起動できないと報告された。ログ共有依頼への追加回答は、エラー表示はなく `until /var/lib/kubelet/config.yaml do sleep` で止まるというものだった。これはユーザーによる待機処理の要約として記録し、完全な shell 構文や journalctl の原文とは扱わない。
+
+対象版はユーザー報告の BCM 11.33。公開文書では今回の対象を `<AFFECTED_CP>`、クラスタを `<KUBE_CLUSTER>` に匿名化する。実施時刻、Kubernetes 版、空になった原因、mount 状態、kubelet クライアント証明書・kubeconfig の有無は未確認。systemd の起動前処理が設定ファイルを待っていると考えられ、kubelet 本体の起動後エラーとは区別する。unit 全文で確認する。
+
+### 未実行の確認・条件付き修復手順
+
+実行場所は対象 CP の root shell。正常な CP は維持する。以下は Codex による実行済みログではない。
+
+```bash
+systemctl status kubelet --no-pager -l
+systemctl cat kubelet
+findmnt -T /var/lib/kubelet
+ls -la /var/lib/kubelet
+ls -l /etc/kubernetes/kubelet.conf '/root/.kube/kubeadm-init-<KUBE_CLUSTER>.yaml'
+kubeadm version -o short
+kubeadm init phase kubelet-start --help
+```
+
+`findmnt` は現在見えている filesystem を示す。別 filesystem の未 mount で空に見える場合は本来の mount の復旧を先に行い、空の場所へ設定を新規作成しない。必要なら fstab / mount unit と既存構成を照合する。systemd が待つパス・`--config`・環境ファイルの参照先が標準配置と一致するか確認する。kubeadm が PATH にない場合は、対象環境で導入済みの版の実体を確認し、別版を導入して補わない。
+
+対象 CP 自身の kubeadm-init YAML があり、現在のクラスタとノード用である場合、そのファイルを入力にする。`KubeletConfiguration`、`InitConfiguration`、`ClusterConfiguration` の有無、Node 名 / IP、CRI socket、cgroup driver、DNS / serviceSubnet と追加設定をローカルで照合する。他 CP の設定をそのまま使わない。YAML には certificateKey 等があり得るため全文を共有しない。ファイルが欠落・不整合の場合は次の生成操作へ進まない。
+
+BCM の `update_configmap` は入力 YAML を CP に配布する処理を含むが、クラスタの ConfigMap と複数 CP に変更が及ぶ。[既存の更新手順](etcd-backup-restore.md#復元後の-update_configmap--update_apiserver-の意味) に従い、API 利用可能、BCM の etcd 割当と実メンバーの一致、対象の controlPlane role と退避を確認したうえで、入力 YAML の再配布が必要な場合だけ使う。`update_apiserver` は kubelet ディレクトリの復元処理ではない。
+
+正しい入力 YAML と mount が確認でき、設定ファイルの欠落を修復する場合の例。プレースホルダーは実値へ置換する。既存ファイルがあれば変更前に root 限定の場所へ退避する。
+
+```bash
+kubeadm init phase kubelet-start --config='/root/.kube/kubeadm-init-<KUBE_CLUSTER>.yaml'
+
+ls -l /var/lib/kubelet/config.yaml /var/lib/kubelet/kubeadm-flags.env
+systemctl status kubelet --no-pager -l
+journalctl -u kubelet --since '-5 minutes' --no-pager -n 100
+```
+
+この phase は kubelet の設定とノードごとの起動引数を生成し、kubelet を起動・再起動する。`kubeadm init` 全体を実行する操作ではない。現地版で利用できることは `--help` で確認する。期待結果はファイル待ちが解消されること。phase の終了成功だけで Node Ready やクラスタ復旧完了とは判断しない。
+
+`/var/lib/kubelet/` 全体が空なら、`pki/` のノード固有クライアント証明書も失われている可能性がある。次のコマンドは kubeconfig の外部ファイル参照だけを表示する（埋め込みの秘密鍵・証明書データは表示しない）。
+
+```bash
+grep -E '^[[:space:]]*client-(certificate|key):' /etc/kubernetes/kubelet.conf
+ls -l /var/lib/kubelet/pki/kubelet-client-current.pem
+```
+
+外部ファイル参照が出た場合、その実ファイルが読めるか確認する。grep の一致なしは埋め込み方式の可能性もあり、単独で認証情報欠落とは判定しない。kubelet.conf 自体や参照先が欠落していたら、この phase だけでは復旧できない。対象ノード用バックアップからの復元または対象版の再認証・TLS bootstrap 手順が必要となるため、次に出たログと参照パスを基に手順を確定する。別ノードの kubelet.conf / pki をコピーしない。`touch config.yaml` や待機処理の削除は有効な設定の生成にならない。
+
+kubelet が起動した後は `crictl ps -a --name kube-apiserver` と、管理 kubeconfig を使える正常 CP で `kubectl get node <AFFECTED_CP> -o wide` を確認する。API コンテナの生成・継続稼働と Node Ready を別々に確認し、etcd メンバーの正常化も従来の手順で確認する。
+
+### Codex の調査・保存記録
+
+- 日付・実行者・目的: 2026-09-25、Codex。CP の復旧報告を保存し、別 CP の kubelet 設定欠落と認証情報欠落を分けて復旧手順を示す。作業場所は文書リポジトリとローカル BCM プログラムの読み取り。実クラスタへの接続・サービス変更は行っていない。
+- 実行順: `git status --short --untracked-files=all`（開始時変更なし）と README / 関連手順を確認 → `rg` / `sed` でローカル `cm-kubeadm-manage`、`cm-kubeadm-manage-joins`、cm-setup の kubeadm stage / template、systemd unit 内を検索・閲覧 → Kubernetes / NVIDIA 公式資料を Web 照合 → ユーザーへログと前 CP の復旧操作を照会し、設定待ちの回答を反映 → Python で本書と検証状況を更新。長い出力は一部省略され、必要な実装部分を個別に再取得した。候補 `/cm/local/apps/kubernetes/current/bin/kubeadm` の `ls` は存在せず終了 2。現地ノードの配置とは扱わない。
+- 実装上の確認: ローカルの `update_configmap` は BCM の kubeadm_init_file から KubeletConfiguration / InitConfiguration を取り込み、ノード IP を展開して CP に YAML を配布する。`cm-kubeadm-manage-joins` は追加時に join、削除時に reset / Node 削除を行うため、今回の待機状態だけを根拠に remove / add を処方しない。join 表示・実行も行っていない。調査対象のローカル BCM パッケージ版は [前回調査](etcd-backup-restore.md#2026-09-25-etcd-クライアント証明書欠落の復旧手順調査) の結果を引き継ぎ、BCM 11.33 の実装と同一とは断定しない。
+- 根拠: ユーザーチャット、ツール出力、Git 差分、[kubelet-start phase](https://kubernetes.io/docs/reference/setup-tools/kubeadm/generated/kubeadm_init/kubeadm_init_phase_kubelet-start/)、[kubeadm と kubelet 設定](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/kubelet-integration/)、[NVIDIA ノード切替手順](https://docs.nvidia.com/mission-control/docs/systems-administration-guide/2.0.0/change-wlm-nodes.html)、[BCM リリースノート](https://docs.nvidia.com/base-command-manager/bcm-11-release-notes/bcm11-25-08.html)（2026-09-25 閲覧）。NVIDIA のノード切替例は今回の CP 修復への適用確認ではない。製品ソース・マニュアル原本は転載していない。
+- 保存・確認: Markdown の fence / 相対リンク、`git diff --check`、変更・未追跡一覧を確認後、対象 2 文書をステージし、`git diff --cached --name-status` / `--check` / 差分全文と文脈、秘密情報候補、input の非追跡・除外を確認して公開用汎用名義でコミットする。ノード・クラスタの実値を匿名化。過去履歴の全監査・公開・push は対象外。
+- 実際の成果・残課題: 前 CP の復旧と別 CP の設定待ちをユーザー報告として記録し、未実行の条件付き生成手順を作成。新対象の復旧、設定が失われた原因、クライアント証明書の状態は未確認。終了コードのないユーザー報告を成功ログとして補完していない。公開確認の結果とコミット ID は完了報告に記載する。

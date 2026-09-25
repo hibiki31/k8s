@@ -26,6 +26,8 @@
 
 追加復帰対象 CP で API コンテナが crictl に表示されなくなったとのユーザー報告があった。停止済みを含めた一覧・CRI endpoint・manifest・kubelet の状態、直前の操作は未共有。[API コンテナ不表示の切り分け](kubernetes-cidr-troubleshooting.md#2026-09-25-対象-cp-の-api-コンテナが-crictl-に表示されない) を追加し、再作成側のログ確認を優先する。追加回答で `update_apiserver` と再起動を実施したとの報告を受けた。引数・順序・再起動対象・終了結果は未共有で、API の再作成失敗を優先確認する。etcd 再追加の実行と API 修復成否は未確認。
 
+最新報告では、先に API コンテナを調査した CP は正常復旧した（ユーザー報告、最終操作・原出力未共有）。続いて別 CP の `/var/lib/kubelet/` が空で、kubelet 起動時に `config.yaml` の生成待ちとなるとの報告を受けた。対象ノード用設定の再生成とクライアント認証情報の確認を [条件付き修復手順](kubernetes-cidr-troubleshooting.md#2026-09-25-別-cp-の-kubelet-が-configyaml-の生成待ちになる) に整理した。Codex による現地操作は未実施で、新対象の復旧・全 CP Ready・etcd 3 メンバーの正常化は未確認。
+
 ## 現在の状況
 
 | 項目 | 状態 | 根拠・確認範囲 |
