@@ -476,8 +476,87 @@ install -d -m 700 "$ETCD_BACKUP_DIR"
 
 etcd 3 台の正常化後、既存の PKI / manifest / kubeadm YAML を前節の方法で退避し、BCM の実メンバー割当との一致を確認する。次にヘッドで `cm-kubeadm-manage --kube-cluster "$KUBE_CLUSTER" update_configmap`（実体は `/cm/local/apps/cmd/scripts/`）を実行し、**障害 CP から 1 台ずつ** `update_apiserver <CP_NODE>` を実行する。API の etcd クライアント証明書欠落と接続先設定を修復し、各回で当該 CP の API ログ・継続稼働と `/readyz`・Node Ready を確認する。正常だった CP の manifest に古い endpoint が残る場合も、別 CP の復旧確認後に更新する。ConfigMap の更新だけでは全 API manifest は更新されない。最終的に etcd 3 台 healthy / 全て投票メンバー、API 3 台稼働、全期待 Node Ready、[復元データの比較](#5-復元結果を簡易確認する)を別々に確認する。
 
+### 再追加前の実メンバーと overlay の確認
+
+以下は BCM 11.33 の障害環境では **未実行の読み取り確認例**。実メンバーは etcd、管理側の割当は BCM に問い合わせて照合する。Kubernetes の `kubectl get nodes` は etcd メンバー一覧の代わりにはならない。名前はプレースホルダーで、実行時に対象値へ置換する。
+
+**復元した etcd ノードの root shell** で、対象クラスタの module を読み込み、実メンバーを確認する。
+
+```bash
+KUBE_CLUSTER='<KUBE_CLUSTER>'
+. /etc/profile.d/modules.sh
+module load "etcd/kube-$KUBE_CLUSTER" && etcdctl member list --write-out=table
+```
+
+コマンド成功時の全行で `NAME`、`PEER ADDRS`、`IS LEARNER` を確認する。復元ノードだけの 1 行なら、残り 2 台はこの一覧には未登録。learner や未起動メンバーも登録済みなので除外しない。NAME が空でも対象 IP の peer URL があれば登録済みと扱う。接続・TLS エラーや空出力を「未登録」と判定しない。module が利用できなければ停止し、既存の endpoint / TLS 設定を確認する。
+
+**BCM ヘッドの root shell** では、Kubernetes cluster が参照する etcd cluster と overlay 一覧を表示する。
+
+```bash
+cmsh -c 'kubernetes; use <KUBE_CLUSTER>; get etcdcluster'
+cmsh -c 'configurationoverlay; list'
+```
+
+Kubernetes 名と etcd 名は同じとは限らない。候補の overlay ごとに以下を表示する。名前に etcd が含まれるという理由だけでは確定せず、Etcd::Host role の参照先まで確認する。
+
+```bash
+cmsh -c 'configurationoverlay; use <OVERLAY_NAME>; show'
+cmsh -c 'configurationoverlay; use <OVERLAY_NAME>; roles; list'
+# Etcd::Host がある場合
+cmsh -c 'configurationoverlay; use <OVERLAY_NAME>; roles; use Etcd::Host; get etcdcluster'
+cmsh -c 'configurationoverlay; use <OVERLAY_NAME>; roles; use Etcd::Host; get options'
+```
+
+対象 etcd cluster を参照する **通常メンバー用・learner 用のすべての overlay** を確認する。確認したツール実装は options に `--initial-cluster-state=existing` がある overlay を learner 用と判定するが、role 不整合や版差があり、名前・options だけで稼働中のメンバー状態を断定しない。`show` の Nodes だけでなく Categories 等による割当も含めて判定する。対象ノードの割当元の照合には次も使える。
+
+```bash
+cmsh -c 'device; use <REJOIN_NODE_2>; roles; list'
+cmsh -c 'device; use <REJOIN_NODE_3>; roles; list'
+```
+
+**カテゴリ等を含む overlay 全体の所属を確実に展開する補助例**は次のとおり。本ヘッドの `cm-etcd-manage` と同じ `pythoncm` API / Python を使う。BCM ヘッドで実行し、cluster 名を書き換える。照会と表示だけで、commit・role 修正は呼び出さない。11.33 で module / property エラーが出た場合は未確認として止める。
+
+```bash
+/cm/local/apps/python3/bin/python - <<'PYCM'
+import pythoncm.cluster
+import pythoncm.entity
+
+name = '<KUBE_CLUSTER>'
+cluster = pythoncm.cluster.Cluster()
+kube = cluster.get_by_name(name, pythoncm.entity.KubeCluster)
+if kube is None or kube.etcdCluster is None:
+    raise SystemExit('Target Kubernetes/etcd cluster not found')
+print('Target etcd cluster:', kube.etcdCluster.name)
+found = 0
+for overlay in cluster.get_by_type(pythoncm.entity.ConfigurationOverlay):
+    for role in overlay.roles:
+        if role.name != 'Etcd::Host':
+            continue
+        if role.etcdCluster is None or role.etcdCluster.name != kube.etcdCluster.name:
+            continue
+        found += 1
+        print('Overlay:', overlay.name)
+        print('Nodes including inherited membership:',
+              ', '.join(sorted(node.hostname for node in overlay.all_nodes)) or '(empty)')
+if not found:
+    raise SystemExit('No matching overlay; configuration needs investigation')
+PYCM
+```
+
+etcd member list に対象ノードの名前・peer URL がなく、対象 etcd cluster に対応する全 overlay の展開済み所属にも対象ノードがなければ、「実メンバーと BCM overlay の双方に未登録」と確認できる。どちらかに残る場合は前節の `add` を実行せず、登録済み learner / 通常メンバー / BCM にだけ残る割当のどれかを確認する。未登録でも spool が空かどうかは別途確認が必要。
+
 ### Codex の調査・記録
 
 2026-09-25、実行者 Codex。リポジトリルートで `git status --short --untracked-files=all`、README・検証状況・本書の `sed` を実行（開始時変更なし）。インストール済み `cm-etcd-manage` を `rg` / `sed` で読み、restore（991–1100 付近）、add_learner（686–824）、promote（829–903）、remove（537–652）、CLI dispatch、module 読み込みを確認した。さらに backup（920–990）を読み、ヘッドと etcd ノードの両方で保存先が必要なため、作成例をステージ後のレビューで修正し再ステージした。初回の長い出力は一部省略され、必要な処理を個別に再読した。`--kube-cluster placeholder add --help` と `promote --help` はヘルプ表示成功、`/var/log` 読み取り専用の警告あり。ヘルプ以外の実環境操作は実行していない。本ヘッドのパッケージ版は前節の確認結果を引き継ぐ。
 
 Web で上記 etcd / NVIDIA 公式資料を確認し、Python で本書と検証状況を更新した。目的・期待結果は、1 台復元と API 健全性成功の報告を踏まえ、残りの etcd 追加と API 設定修復の順を示すこと。実際の成果は条件付き手順と報告の保存。版差、member list、旧データ / overlay 整理状態、追加・証明書修復・復元データ一致は未確認。証跡はユーザー報告・ツール出力・Git 差分・公式資料（2026-09-25 閲覧）。対象 2 文書のステージ済み差分・Markdown・公開情報・input 除外を確認して公開用汎用名義でコミットし、ID と残変更を報告する。識別子は匿名化、原本・秘密情報は追加せず、push・過去履歴全体の監査は対象外。
+
+### 2026-09-25: メンバーと overlay 照会方法の調査記録
+
+実施者 Codex、実行場所は文書リポジトリと本ヘッドのローカルファイル。目的は再追加の前提を具体的に確認する読み取り手順の提示。`git status --short --untracked-files=all`（変更なし）、README / 本書の `sed`、`cm-etcd-manage` の `rg` / `sed` で cluster 対応・overlay 抽出（116–189 行付近）を確認した。同ツールは直接割当の `nodes` ではなく `all_nodes` を使うため、継承を含む照会例を追加した。
+
+Python API の配置探索では `/cm/local/apps/cmd/lib/python*` と想定した pythoncm ディレクトリがなく検索エラーとなった。一般 Python package の検索結果は長く一部省略された。実体の実行済みツールと同じ API 使用箇所を根拠にし、追加 package の導入は行っていない。`PYTHONPATH=/tmp/bcm-pdf-read` と既存 pypdf でローカル PDF を確認。最初の指定ページ範囲では対象なし、Containerization Manual 全文の検索で §4.9–4.9.1 pp.63–64（紙面 / PDF 一致）に `get etcdcluster` と EtcdHost の説明を確認した。資料は `input/10-bcm-installer-manual/containerization-manual.pdf`、BCM 11、Revision `47eff3c`、2026-09-21。Admin Manual の候補範囲検索では allnodes の記載を得られなかった。原本を転載せず独自の手順へ要約した。
+
+NVIDIA 公開 [Cluster Management](https://docs.nvidia.com/dgx-superpod/administration-guide-dgx-superpod/latest/cluster-management.html) と [Node and Category Management](https://docs.nvidia.com/mission-control/docs/systems-administration-guide/2.3.0/node-category-management.html) を Web 検索で参照し、cmsh の roles / configurationoverlay とカテゴリ継承を照合した（2026-09-25）。一般操作の資料であり障害環境の版・実割当の確認結果ではない。
+
+Python で本書へ手順を追加。期待結果と成果は未登録の判定条件・照会方法の保存。実クラスタ・BCM API の照会や再追加は今回実行していない。Python 例は構文を確認し、Markdown・リンクとステージ済み差分・公開情報・input 非追跡 / 除外を確認して公開用汎用名義でコミットする。対象は本書のみで、検証進捗は前回記録を維持。実値・原本の追加なし、識別子はプレースホルダー。証跡はツール出力・Git 差分・上記資料。障害環境の member / overlay / spool は出力未共有のため未確認。push と過去履歴全体の監査は対象外。
