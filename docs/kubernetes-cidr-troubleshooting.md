@@ -415,3 +415,46 @@ Codex はリポジトリのルートで `git status --short --untracked-files=al
 ## 2026-09-25: API の etcd クライアント証明書欠落の報告
 
 ユーザーが crictl で API ログを確認し、`/etc/kubernetes/pki/<KUBE_CLUSTER>/apiserver-etcd-client.crt` に `no such file or directory` が出ると報告した。クラスタ識別子は匿名化。ホスト側の欠落か mount / 参照先不整合かは未確認。[BCM コマンドによる条件付き復旧](etcd-backup-restore.md#etcd-クライアント証明書が見つからない場合の復旧) に手順と Codex の実装確認記録を保存した。実環境での証明書生成・API 再起動は未実施。
+
+## 2026-09-25: 対象 CP の API コンテナが crictl に表示されない
+
+ユーザーから、追加復帰対象の CP（公開文書では `<AFFECTED_CP>`）で kube-apiserver コンテナが crictl から見えなくなったと報告された。実行した一覧コマンド、runtime endpoint、発生時刻、直前の add / remove / update_apiserver / 再起動操作と終了結果は未共有。以前の証明書欠落との因果関係や、前の案内コマンドを実行済みかは推定しない。復元済み CP の API 健全性成功は直前のユーザー報告を引き継ぎ、今回再検証していない。
+
+追加回答で、ユーザーが `update_apiserver` と再起動を実施したことが判明した。正確なコマンド引数・実行順・時刻・終了結果、OS 再起動かサービス再起動かは未記録。API 更新時削除後の再作成失敗を優先して調べるが、原因とはまだ断定しない。BCM ヘッドでは `tail -n 200 /var/log/cm-kubeadm-manage.log` で該当ノード・該当実行時刻の生成 / 証明書 / crictl 停止削除エラーを確認する。対象 CP では再起動後の `journalctl -b -u kubelet --no-pager -n 200` も確認する（未実行例）。
+
+以下は **未実行の読み取り手順**。対象 CP の root shell で実行する。BCM 11.33 という報告を前提にするが、実パッケージ版・kubelet の実設定は未確認。
+
+```bash
+# 実行中だけでなく終了済みを含むコンテナ、および Pod sandbox
+crictl ps -a --name kube-apiserver
+crictl pods --name kube-apiserver
+
+# kubelet / containerd の状態と、コンテナ作成側のログ
+systemctl status kubelet containerd --no-pager -l
+journalctl -u kubelet --since '-30 minutes' --no-pager -n 200
+journalctl -u containerd --since '-30 minutes' --no-pager -n 100
+
+# kubeadm 標準の配置例。実際のパスは下記の起動設定と照合する
+ls -l /etc/kubernetes/manifests/kube-apiserver.yaml
+grep -n 'staticPodPath' /var/lib/kubelet/config.yaml
+```
+
+crictl が PATH にない場合、本ヘッドで確認した BCM ツールは `. /etc/profile.d/modules.sh` と `module load containerd` を使ってから crictl を呼び出す。module 読み込み失敗を無視しない。crictl が接続エラーを出す場合はコンテナ不在と判断せず、`crictl config`、`systemctl cat kubelet`、必要に応じて `ps -C kubelet -o args=` で CRI endpoint の設定を照合する。コマンド出力には接続情報があり得るため原文の公開を避ける。別 runtime を採用していれば該当サービスを調べる。
+
+kubelet の `--config` が標準と異なる場合は実ファイルの `staticPodPath` を確認する。旧版の `--pod-manifest-path` 指定も考慮する。ディレクトリを確認して `ls -la '<STATIC_POD_PATH>'` で API manifest の有無を調べ、manifest が別の場所へ移動されていないか確認する。バックアップを監視ディレクトリ内へ追加しない。
+
+| 結果 | 意味・次の確認 |
+|---|---|
+| ps -a に Exited がある | 停止済みコンテナは残っている。最新 ID を指定して `crictl logs --tail=100 <CONTAINER_ID>` を確認する |
+| Pod sandbox はあるがコンテナがない | image pull / mount / sandbox・コンテナ作成失敗の候補。`crictl inspectp <POD_ID>` と kubelet / runtime ログを確認 |
+| kubelet / runtime が停止・失敗 | まずログで停止理由を確認。設定・リソース問題を解消後、対象 CP のみ既存の条件付き起動手順を適用 |
+| manifest がない、監視先が違う、構文エラー | kubelet が API Pod を作れない。起動設定と manifest の配置・生成エラーを調べる |
+| manifest と runtime が正常だが全履歴もない | garbage collection、更新時削除、異なる CRI endpoint の可能性。kubelet の作成ログで判定する |
+
+kube-apiserver はこの構成では kubelet 管理の static Pod。API が使えないことだけでは static Pod 作成不能とはならず、kubelet ログが重要。`kubectl apply` や `kubeadm init` 全体の再実行で補わない。[Static Pods](https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/) と [crictl](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/) の公式資料を参照。
+
+本ヘッドの `cm-kubeadm-manage` 実装では `update_apiserver` は manifest 生成後に API sandbox の停止・削除を行うため、実行直後なら再作成中の可能性がある。実行は追加回答で報告されたが、どの段階まで成功したかは未確認。Pod ID が空のケースも対象版の扱いを要確認とし、実行ログなしで同コマンドを連続再試行しない。API manifest を再生成する場合は、[既存の BCM 修復手順](etcd-backup-restore.md#etcd-クライアント証明書が見つからない場合の復旧) の正しい kubeadm-init YAML・PKI と退避を前提にする。
+
+Codex の実施記録: 2026-09-25、リポジトリルートで `git status --short --untracked-files=all`（変更なし）、README / 既存切り分け / 検証状況を `sed` / `tail` で確認。長い出力は一部省略された。ローカル `/cm/local/apps/cmd/scripts/cm-kubeadm-manage` の 53–67、655–688 行を読み、module 読み込みと manifest 生成・sandbox 停止削除の順を確認した（版は前回のローカル調査結果を引き継ぐ）。Web で上記 Kubernetes 公式資料を照合（2026-09-25）。ユーザーへ直前操作の共有を依頼し、Python で本書と検証状況を更新した。目的・期待結果は一覧条件・runtime・manifest・kubelet を分けて再作成失敗を調べること。実際の成果は診断手順とユーザー報告の保存で、実環境コマンドは未実行。原因と復旧は未確認。
+
+保存時は変更 2 文書の Markdown・リンク・ステージ済み差分・公開情報・input 非追跡と除外を確認して公開用汎用名義でコミットする。実ノード名は匿名化し、認証情報・接続実値・原本は追加しない。証跡はユーザーチャット・ツール出力・Git 差分。push と過去履歴全体の監査は対象外。
