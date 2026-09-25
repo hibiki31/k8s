@@ -97,6 +97,8 @@ Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の比較は [BCM / Kubernetes
 
 構築用の `cm-kubernetes-setup` は BCM ヘッドノード上で、BCM の導入・対象ノードの準備後に利用するツールです。以下は資料の索引であり、そのまま実行する構築手順ではありません。
 
+etcd のメンバー管理・バックアップ用 `cm-etcd-manage` の提供状況と、`PATH` にない場合の確認方法は [`cm-etcd-manage` が見つからない場合の調査](bcm-etcd-management.md) に分離した。2026-09-25 に BCM 11 / 11.34.0 の公式 Release Notes、DGX SuperPOD / BasePOD Update Guide、手元の製品 PDF と本ヘッドのインストール済みファイルを照合した。
+
 | 項目 | 章・PDFページ | 資料で確認できた内容と本検証での扱い |
 |---|---|---|
 | 導入方式と版 | 第4章 p.27、§4.2 pp.28-29 | BCMはKubernetesの導入にkubeadmを使用する。導入可能な版は `cm-kubernetes-setup --list-versions` と実パッケージで確認し、本環境の採用版を決める |

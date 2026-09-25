@@ -42,6 +42,7 @@ Kubernetes・Multus・TopoLVM 本体の構築手順書は未作成です。今�
 |---|---|
 | [BCM Base View への接続手順](docs/bcm-base-view.md) | 既存のポート転送・ブラウザー Proxy からの接続、ログイン方法、サーバー応答と 6 枚の管理画面の確認記録 |
 | [BCM / Kubernetes バージョン対応](docs/bcm-kubernetes-versions.md) | Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の導入候補・認定表示と確認方法 |
+| [`cm-etcd-manage` が見つからない場合の調査](docs/bcm-etcd-management.md) | コマンド置換の有無、BCM 10 / 11 の提供形態、配置先・PATH・パッケージの切り分け |
 | [BCM の PXE と FULL 展開の仕組み](docs/bcm-pxe-provisioning.md#pxe-と-full-展開の仕組み) | 電源投入から OS 起動まで、AUTO / FULL の決定、再起動時の同期とディスクへの影響 |
 | [Kubernetes と swap](docs/bcm-pxe-provisioning.md#kubernetes-と-swap) | BCM のセットアップによる swap 無効化の扱いと、構築後・再起動後の確認点 |
 
