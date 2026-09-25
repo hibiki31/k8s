@@ -198,11 +198,67 @@ kubectl delete namespace etcd-restore-check
 
 ## 残る確認事項
 
+後続の利用者報告として [復旧前後の再起動と Terminating Pod](#復旧前後の再起動と-terminating-pod) を追記した。以下の未構築・未実行の記述は手順作成時点の記録であり、報告対象が本検証クラスタと同一かは未確認である。
+
 - 別環境の BCM、`cmdaemon`、`cm-etcd-manage`、Kubernetes、etcd の版と cluster 名は未共有。
 - 別環境の etcd member 数、member / control plane の配置、spool path、snapshot の共有方法は未確認。
 - 対象版に一致する BCM multi-member 復旧順は、NVIDIA の公開資料では確認できていない。実リストア前に確定が必要。
 - 本リポジトリの Kubernetes は未構築なので、本書の manifest、差分作成、backup、restore、復元確認は未実行。
 - PVC / PV と TopoLVM の LV・ファイル内容、外部システムのデータは別の復旧試験が必要。
+
+## 復旧前後の再起動と Terminating Pod
+
+2026-09-25 の利用者報告: etcd 復旧前後にノードを再起動し、`calico-system` の apiserver Pod が `Terminating` に残り、対象 Node の `Non-terminated Pods` にも表示されている。操作日時・正確な実行順・コマンド・出力・製品版は未共有。対象 Node 名は公開可否未確認のため `<TARGET_NODE>` と匿名化し、既存 VM との対応は推定しない。再起動が原因との断定、etcd 復旧成功の判定はしていない。
+
+以下は未実行の案内。既存の管理用 kubeconfig と Pod の照会・削除権限、対象ノードでの root / sudo 権限を前提とする。`Non-terminated Pods` は API 上で phase が Succeeded / Failed 以外の Pod を含み、コンテナが現在動いている証拠ではない。
+
+### 対象と削除待ち理由を確認する
+
+管理端末で実行する。変数の値は実際の対象へ置き換える。Pod 名・UID・割当 Node を記録し、Kubernetes 本体の `kube-system/kube-apiserver-*` と取り違えない。
+
+```bash
+kubectl get --raw='/readyz'
+kubectl -n calico-system get pods -o wide
+CALICO_POD='<対象のTerminating Pod名>'
+kubectl -n calico-system get pod "$CALICO_POD" \
+  -o jsonpath='{.metadata.uid}{"\n"}{.spec.nodeName}{"\n"}{.metadata.deletionTimestamp}{"\n"}{.metadata.finalizers}{"\n"}{.metadata.ownerReferences}{"\n"}'
+kubectl -n calico-system describe pod "$CALICO_POD"
+kubectl -n calico-system get deployment,replicaset
+```
+
+API が正常に応答し、削除日時が設定済み、終了猶予を過ぎても残ることを確認する。ownerReferences が指す ReplicaSet / Deployment の実在と希望 replica 数も確認する。親がなければ Pod は自動再作成されない。API 自体が不調なら etcd / API の復旧状態を先に確認する。
+
+対象 Node で、設定済みの正しい CRI endpoint を使い、旧 Pod UID に対応する sandbox・コンテナを確認する。
+
+```bash
+sudo crictl pods --namespace calico-system
+sudo crictl inspectp <照合対象のSANDBOX_ID>
+sudo crictl ps -a --pod <UIDが一致したSANDBOX_ID>
+sudo journalctl -u kubelet --since '-30 minutes' --no-pager -n 200
+```
+
+同名だけで判断せず、inspectp の metadata.uid を API の UID と照合する。取得エラーを「存在しない」と判定しない。旧コンテナが停止済み・存在しないことを確認する。再起動後に再作成された可能性もあるので、再起動した事実だけでは停止確認にならない。稼働中なら kubelet の FailedKillPod、CNI teardown、unmount、API 接続エラーを確認する。ノードに接続できず実体を確認できない場合は、基盤で電源停止を確認してから強制削除を検討する。
+
+### 対象 Pod だけを強制削除する
+
+旧実体が停止済みで、finalizers が空の場合、管理端末で対象 1 Pod を削除する。
+
+```bash
+kubectl -n calico-system delete pod "$CALICO_POD" \
+  --grace-period=0 --force --wait=false
+kubectl -n calico-system get pod "$CALICO_POD"
+kubectl -n calico-system get pods -o wide
+```
+
+期待結果は旧 Pod が NotFound となり、親 controller が必要数の新 Pod を生成すること。新 Pod の Ready、親 Deployment の Available を確認する。API 上の削除とノード上のプロセス停止は別であり、強制削除は停止完了を待たない。namespace 全体や Calico の DaemonSet を削除する必要はない。[kubectl delete 公式資料](https://kubernetes.io/docs/reference/kubectl/generated/kubectl_delete/)（閲覧日 2026-09-25）を参照。
+
+強制削除後も残る場合は finalizers とコマンドのエラーを再確認する。finalizers がある場合、担当 controller の後処理を確認する。強制削除でも finalizer を自動除去するわけではない。無条件に finalizers を空にせず、キー名・担当 controller・未完了処理を特定する。[Finalizers 公式資料](https://kubernetes.io/docs/concepts/overview/working-with-objects/finalizers/)（閲覧日 2026-09-25）を参照。Pod が消えても Node の NotReady / CIDRNotAvailable が解消したとは扱わず、[Node の切り分け](kubernetes-cidr-troubleshooting.md) を続ける。
+
+### この追記の実施記録
+
+実施者は Codex、実施日 2026-09-25、時刻は未記録。文書リポジトリで、README、既存 etcd 手順、検証状況、除外設定を git status / cat / sed / tail で確認し、公式の削除・finalizer 資料を Web で参照した。開始時の変更はなく、apply_patch で本節と進捗の参照を追加した。利用者の再起動・障害報告は上記の報告範囲だけを記録した。Codex は対象クラスタへの照会・Pod 削除を実行していない。
+
+保存時は git diff --check、ステージ済み対象一覧・全差分・リンクとコードフェンス、公開情報、input/ の非追跡・除外を確認し、公開用汎用名義でローカルコミットする。証跡は本タスクのツール結果・Git 差分。製品版と原出力が未共有のため、停止原因・削除成功・再作成・Node 復旧は未確認である。
 
 ## 2026-09-25: 手順作成の実施記録
 
