@@ -18,6 +18,8 @@
 
 続いて状態更新エラーと `connection refused` の表示が報告された。宛先・原ログ・実行操作は未共有。[接続拒否の切り分け](kubernetes-cidr-troubleshooting.md#44-error-updating-node-status-will-retry-と-connection-refused) で API / LB の待受と API コンテナのログを確認する段階。原因・復旧は未確認。
 
+さらにユーザーが crictl で API ログを確認し、etcd クライアント証明書ファイルの `no such file or directory` を報告した。証明書の参照・配置を起動阻害要因として調査中。[BCM の条件付き修復手順](etcd-backup-restore.md#etcd-クライアント証明書が見つからない場合の復旧) を整理した。追加回答では障害環境は BCM 11.33、CP 3 台中 1 台が稼働し kubectl 利用可能（ユーザー報告）。正常 CP を維持し、障害 CP を順次修復する方針。ホスト側の欠落 / mount 不整合、実パッケージ版、復旧結果は未確認。
+
 ## 現在の状況
 
 | 項目 | 状態 | 根拠・確認範囲 |

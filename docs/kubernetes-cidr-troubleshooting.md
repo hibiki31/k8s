@@ -411,3 +411,7 @@ kubelet の状態更新時に TCP 接続が拒否された場合は、ログに�
 Codex はリポジトリのルートで `git status --short --untracked-files=all`、README の `cat`、既存手順・検証状況の `sed` / `tail`、環境・etcd 文書の `rg` を実行した（終了 0、開始時変更なし、長い出力は一部省略）。Kubernetes 公式の kubeadm トラブルシューティングと crictl 手順を Web で確認し、Python で 4.4 と検証状況を更新した。ツール版は前回確認の Git 2.43.0 / Python 3.12.3 を引き継ぎ、今回は再確認していない。実環境には接続していない。
 
 目的・期待結果は TCP 接続拒否の宛先に応じて API / LB / runtime / etcd を順に調べる手順の保存。実際の成果は調査手順と利用者報告の反映で、原因・復旧は未確認。証跡は今回のチャット・ツール出力・Git 差分と [公式 crictl 手順](https://kubernetes.io/docs/tasks/debug/debug-cluster/crictl/)（2026-09-25 閲覧）。上記の保存手順で Markdown・リンク・ステージ済み差分・公開情報・input 除外を確認して、公開用汎用名義でコミットし、ID と残変更を完了報告に記載する。対象は本書と検証状況の 2 文書。実値や原本は追加せず、接続情報はプレースホルダー。過去履歴の監査・公開・push は対象外。
+
+## 2026-09-25: API の etcd クライアント証明書欠落の報告
+
+ユーザーが crictl で API ログを確認し、`/etc/kubernetes/pki/<KUBE_CLUSTER>/apiserver-etcd-client.crt` に `no such file or directory` が出ると報告した。クラスタ識別子は匿名化。ホスト側の欠落か mount / 参照先不整合かは未確認。[BCM コマンドによる条件付き復旧](etcd-backup-restore.md#etcd-クライアント証明書が見つからない場合の復旧) に手順と Codex の実装確認記録を保存した。実環境での証明書生成・API 再起動は未実施。

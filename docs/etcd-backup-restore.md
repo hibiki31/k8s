@@ -137,6 +137,96 @@ API が利用でき、BCM の member 割当を確定済みなら、設定更新�
 
 両操作は更新・再起動を伴う復旧後の設定整合であり、[復元結果の簡易確認](#5-復元結果を簡易確認する) とは別の作業である。今回の調査では実行していない。
 
+### etcd クライアント証明書が見つからない場合の復旧
+
+2026-09-25 のユーザー報告: `crictl` で kube-apiserver のログを確認し、`/etc/kubernetes/pki/<KUBE_CLUSTER>/apiserver-etcd-client.crt: no such file or directory` を確認した。クラスタ識別子は公開可否未確認のため匿名化した。ユーザーの正確な実行コマンド・時刻、原ログ、対象ノード・BCM 版は未共有。コンテナから証明書が見えないことが起動阻害要因と考えられるが、ホスト上の欠落・mount 不整合・誤った参照パスは未切り分け。
+
+追加のユーザー回答で、障害環境は **BCM 11.33、CP 3 台中 1 台は稼働し kubectl が利用可能**と判明した（ユーザー報告、原出力未共有）。正常 CP は維持し、障害 CP を 1 台ずつ扱う。正常経路で ConfigMap を照会できるため、下記 3 の API 利用可能時の分岐を使える。ただしツールはヘッドの `/root/.kube/config-<KUBE_CLUSTER>` を使用するため、その kubeconfig からも API に接続できることを先に確認する。
+
+以下は **未実行の条件付き復旧手順**。確認した実装は本ヘッドの `cmdaemon 11.0-165270-cm11.0-14a0291f4f` にある `cm-kubeadm-manage`。障害環境の同名コマンドが同じ動作とは未確認のため、ヘルプと版を照合する。実行場所は BCM ヘッドの root shell、ノード内操作は対象 CP の root shell。CMDaemon の対象クラスタ・CA 情報が正しく、ヘッドから CP への SSH と証明書発行処理が利用できることが前提。各手順の成功を確認して次へ進み、複数 CP を一括処理しない。
+
+#### 1. ツールと etcd の確認（BCM ヘッド）
+
+```bash
+KUBE_CLUSTER='<KUBE_CLUSTER>'
+CP_NODE='<AFFECTED_CONTROL_PLANE>'
+cmsh -c 'main versioninfo'
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --help
+/cm/local/apps/cmd/scripts/cm-etcd-manage --help
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" status
+```
+
+`CP_NODE` は API server が動作する対象 CP の BCM 名 / SSH 接続名。管理専用ヘッドを指定しない。etcd status の接続・health・leader・member を確認する。証明書ファイルの欠落だけでは etcd データ破損を示さないため `restore` / メンバー削除は行わない。etcd が不健全ならその結果を別途切り分ける。
+
+#### 2. 欠落・参照先と退避（対象 CP）
+
+```bash
+KUBE_CLUSTER='<KUBE_CLUSTER>'
+ls -l /etc/kubernetes/pki/"$KUBE_CLUSTER"/apiserver-etcd-client.{crt,key}
+ls -l /etc/kubernetes/pki/"$KUBE_CLUSTER"/etcd/ca.crt
+ls -l /root/.kube/kubeadm-init-"$KUBE_CLUSTER".yaml
+# ローカルで確認し、原文を公開しない
+sed -n '1,240p' /etc/kubernetes/manifests/kube-apiserver.yaml
+sed -n '1,240p' /root/.kube/kubeadm-init-"$KUBE_CLUSTER".yaml
+```
+
+manifest の `--etcd-certfile` / `--etcd-keyfile` / `--etcd-cafile` と `volumeMounts` / `volumes.hostPath` が正しいかを確認する。コンテナとホストで同じパスとは限らない。ホストにファイルがあるなら mount / パスを先に調べ、無条件で証明書を再生成しない。YAML の対象クラスタ、`certificatesDir`、`etcd.external` の endpoint / CA / cert / key、ノード固有 API 設定と実構成を照合する。
+
+変更前に CP の既存 PKI・manifest・kubeadm YAML を退避する。証明書生成の fallback がヘッドのファイルを利用する版があるため、ヘッド側の対象 PKI も同様に退避する。次は対象 CP での例。既存ディレクトリを確認してから実行する。
+
+```bash
+umask 077
+RECOVERY_DIR=$(mktemp -d /root/k8s-pki-recovery.XXXXXX)
+cp -a /etc/kubernetes/pki "$RECOVERY_DIR/"
+cp -a /etc/kubernetes/manifests "$RECOVERY_DIR/"
+cp -a /root/.kube/kubeadm-init-"$KUBE_CLUSTER".yaml "$RECOVERY_DIR/"
+```
+
+退避物には秘密鍵が含まれるため root 専用で保持し、Git へ追加しない。バックアップを static Pod manifest ディレクトリ内に置かない。既存 CA が正しいことを確認できなければ証明書再生成を進めず、BCM の CA と稼働 etcd の信頼設定を照合する。
+
+#### 3. API の可用性による順序（BCM ヘッド）
+
+**API が利用可能で、復旧後の endpoint / BCM 設定へ同期が必要な場合**は、BCM の member 割当を確認してから以下を実行する。`update_configmap` は ConfigMap に加えて各 CP の kubeadm-init YAML を更新するため影響は対象 1 台に限定されない。
+
+```bash
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --kube-cluster "$KUBE_CLUSTER" update_configmap
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --kube-cluster "$KUBE_CLUSTER" update_apiserver "$CP_NODE"
+```
+
+**全 API が停止している場合、または設定が既に正しく証明書欠落だけの場合**は、2 の既存 kubeadm-init YAML と CA が現在の実構成に一致していることを前提に、対象 1 台だけ以下を実行する。API 停止中に `update_configmap` を先行させない。
+
+```bash
+/cm/local/apps/cmd/scripts/cm-kubeadm-manage --kube-cluster "$KUBE_CLUSTER" update_apiserver "$CP_NODE"
+```
+
+この版の `update_apiserver` は、`cm-component-certificate` で対象クラスタの `apiserver-etcd-client.crt` / `.key` を生成し、不足時はヘッドから転送する。リモート CP の etcd CA が欠けていればヘッドから補うが、既存 CA は通常上書きしない。その後対象の kubeadm-init YAML から API manifest を再生成し、crictl で API Pod を停止・削除して kubelet に再作成させる。対象がヘッド自身の場合、CA 転送処理はスキップするため、ヘッド側 CA 欠落を自動で直す手順ではない。
+
+**既存 YAML がない・古い・正否不明の場合は、このコマンドを実行しない。** 証明書と manifest が部分更新され得る。正常 CP / 退避済み設定 / BCM 設定から、ノード固有値も含めて正しい構成を回復する必要がある。他 CP の YAML をそのままコピーしない。
+
+`update_etcd_certs <NODE>` も存在するが、確認した版では既存 etcd CA を `.bak` へ移動（既存 `.bak` は削除）してヘッドの CA を配布し、クライアント証明書・鍵も生成する。CA の上書きを伴うため今回の第一選択にはしない。`update_apiserver_cert` は API のサーバー証明書用、`update_certs` はより広い証明書更新用であり、今回の欠落に対する同義の操作ではない。
+
+#### 4. 復旧確認
+
+対象 CP で以下を確認する。ファイル復旧に加え、CA 検証とコンテナの最新ログを確認する。
+
+```bash
+ls -l /etc/kubernetes/pki/"$KUBE_CLUSTER"/apiserver-etcd-client.{crt,key}
+openssl verify -CAfile /etc/kubernetes/pki/"$KUBE_CLUSTER"/etcd/ca.crt \
+  /etc/kubernetes/pki/"$KUBE_CLUSTER"/apiserver-etcd-client.crt
+crictl ps -a --name kube-apiserver
+crictl logs --tail=100 <LATEST_APISERVER_CONTAINER_ID>
+```
+
+BCM ヘッドで、既存の対象クラスタ管理 kubeconfig を使う。
+
+```bash
+kubectl --kubeconfig=/root/.kube/config-"$KUBE_CLUSTER" get --raw='/readyz?verbose'
+kubectl --kubeconfig=/root/.kube/config-"$KUBE_CLUSTER" get nodes -o wide
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" status
+```
+
+期待結果は証明書の生成・CA 検証成功、API の継続稼働、readyz 成功、Node Ready / Lease 更新の再開。最初の API 復旧後に設定差が判明した場合だけ `update_configmap` と各 CP の `update_apiserver` を 1 台ずつ適用する。ツールが途中失敗した場合は再試行を連続させず、欠落ファイル・部分更新・最新ログを確認する。変更を戻す場合も退避した同一クラスタの対応するファイルを使い、CA / 鍵 / manifest の組を崩さない。etcd snapshot の復元はこの証明書修復には含めない。
+
 ### `update_apiserver` に headnode を指定する理由の推測
 
 BCM の headnode と Kubernetes の control-plane は兼任できる役割である。`input/10-bcm-installer-manual/containerization-manual.pdf`（BCM 11、Revision `47eff3c`、2026-09-21）の §4.1 p.28 は headnode または専用ノード上の control plane を説明し、§4.2.8 pp.43–44 は headnode が control-plane / etcd として初期選択されると説明している。紙面と PDF 通しページは一致する。
@@ -292,3 +382,17 @@ kubectl -n calico-system get pods -o wide
 8. [既存の保存前手順](repository-maintenance.md#保存前の確認コミット手順) で対象 3 文書をステージし、対象一覧・全差分・空白エラー・作業ツリーとの一致・公開情報の補助検索を確認した。`input/` の追跡はなく、対象 PDF は除外されていた。環境文書のパスワードは既存のプレースホルダーを維持している。追加内容は操作の独自説明、公式 URL、公開製品の版・ファイル識別情報で、認証情報・実接続情報・第三者原本の転載はなく、削除・匿名化を要する問題はなかった。追記後にも再ステージして確認する。コミットは公開用の `Codex <codex@openai.com>` を使用し、ID と残変更は完了報告に記す。
 
 期待結果は、確定できる挙動と案件依存の推測を切り分けること。実際には、ConfigMap / ローカル YAML / static Pod の更新範囲と、headnode を全 CP 更新の代表引数とは扱えないことを確認した。証跡は本タスクのツール出力、上記ファイル・版・行番号、一次 PDF の該当ページ、公式 URL、Git 差分。別案件の正確なコマンド実体、role、実行順、実行結果は未確認。本環境の構成・検証進捗に変更はない。
+
+## 2026-09-25: etcd クライアント証明書欠落の復旧手順調査
+
+実施者は Codex。目的は利用者が crictl で確認した証明書欠落に対する BCM コマンドの手順化。文書リポジトリと本ヘッドのインストール済みスクリプトを読み取り、文書と Git だけを変更した。障害環境の修復操作は未実施。ユーザーのログ確認は報告として上記に記録し、時刻・正確なコマンド・原出力は未記録とした。
+
+実行順と結果:
+
+1. `git status --short --untracked-files=all` は変更なし。README、etcd 管理・復旧・製品資料・環境の関連節を `cat` / `sed` / `rg` で確認した。大きい出力は省略があり、必要な実装説明を個別に再取得した。
+2. 本ヘッドの `/cm/local/apps/cmd/scripts/cm-kubeadm-manage` を `rg` / `sed` で確認。行 588–590、655–766、842–915 の更新・証明書生成・配布・dispatch と、309–329 の API 依存を確認した。`cm-etcd-manage` の引数定義も確認。第三者の実装原文は文書に転載せず、必要な動作を要約した。
+3. `dpkg-query -W` で `cmdaemon 11.0-165270-cm11.0-14a0291f4f`、`cm-setup 11.0-124257-cm11.0-7f8393643d` を確認。両ツールへ `--kube-cluster placeholder` を渡し、`update_apiserver --help`、`update_etcd_certs --help`、`status --help` を実行した。ヘルプ表示に成功。`/var/log` が読み取り専用でログ出力の警告があったが console 表示された。引数解析で終了するヘルプだけで、status 本体・生成・配布・再起動は実行していない。
+4. Web で NVIDIA BCM 11 Release Notes と関連公式情報を確認。ツールの役割は [BCM 11 Release Notes](https://docs.nvidia.com/base-command-manager/bcm-11-release-notes/overview.html)（2026-09-25 閲覧）、正確な処理・引数は上記ローカル実装を根拠とした。ユーザーの追加回答は BCM 11.33・CP 1 台稼働。障害環境のパッケージ版と実装同一性は未確認。
+5. Python で本書の条件付き復旧手順、切り分け文書への導線、検証状況を更新。差分、コードブロック・相対リンク、ステージ済み内容・公開情報、input の非追跡と除外を確認し、公開用汎用名義でコミットする。対象は 3 文書、証跡は本タスクのツール出力と Git 差分。公開・push と過去履歴全体の監査は対象外。
+
+期待結果は API 可用性と既存設定の正しさに応じた復旧順の提示。実際の成果は上記手順の保存とユーザー報告の反映。実環境識別子はプレースホルダーへ置換し、秘密鍵・証明書の実値や第三者資料原本は追加していない。BCM 11.33 の実パッケージ版・対象 CP・ホスト上のファイル / mount・既存 CA / YAML・実修復結果は未確認。コミット ID・公開チェック結果・残変更は完了報告に記載する。
