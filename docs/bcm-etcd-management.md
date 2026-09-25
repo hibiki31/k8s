@@ -71,6 +71,8 @@ cm-etcd-manage --help
 
 `status` 以外にもクラスタ状態を変える subcommand がある。対象 cluster、etcd quorum、バックアップ先、復旧手順を確認する前に `add`、`remove`、`promote`、`move-leader`、`restore` を試行しない。
 
+バックアップ時点への Kubernetes resource の復元判定と、リストア前に確定すべき安全条件は [BCM etcd バックアップ・リストア試験](etcd-backup-restore.md) を参照する。
+
 ## 2026-09-25 の調査実施記録
 
 - 実行者: Codex

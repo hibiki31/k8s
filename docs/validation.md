@@ -1,6 +1,6 @@
 # 検証状況
 
-最終整理日: 2026-09-23
+最終整理日: 2026-09-25
 
 初期資料 `docs/vm-list.md` の準備・検証状況、`input/` に保存された証跡、および 2026-09-22 の利用者提供ネットワーク構成をもとに整理しています。同日夜には BCM ヘッドノード上で読み取り専用の実機調査を行いました。証跡は `input/40-bcm-pxe/2026-09-22-headnode-check.txt`。その後、利用者がライセンスを登録し、23:26 JST に登録後の状態を確認しました（証跡: `input/50-bcm-license/2026-09-22-post-registration-check.txt`）。9 月 23 日には利用者提供の PXE 画像 4 枚を確認し、ヘッド上で node001 の UP と同期完了を再照会しました。最初の IP 指定 SSH は未登録ホスト鍵の検証で停止しましたが、00:17 JST にホスト名 `node001` で接続し、ノード内コマンドと外部 HTTPS を確認しました。エージェントによる設定変更・VM 起動・PXE 再展開は行っていません。[初回展開記録](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) を参照。
 
@@ -42,6 +42,7 @@
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
 | ワーカーの LVM 初期化 | node004 の初回作成成功、運用用切替・保持試験は未実施 | vdb1 のみで vg_topolvm、PE 4 MiB、bcm_seed 4 MiB、残りが未割当と実測。BCM は初回用 XML のまま、次回モードは空。node005・006 と PVC 動作は未確認。[実施記録](worker-storage.md#2026-09-23-node004-の初回展開後確認) |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
+| R-05: etcd バックアップ・リストア | 計画作成・未実施 | [専用 namespace による復元判定手順](etcd-backup-restore.md) を作成。現環境は Kubernetes 未構築で、別環境の版・構成・BCM multi-member 復旧順も未確認。snapshot 取得・差分作成・restore は実行していない |
 
 要件 ID と確認条件は [検証要件](requirements.md) を参照してください。
 
@@ -50,7 +51,8 @@
 1. node001～004 の初回展開後確認は完了。node004 は BCM の disksetup が初回用のままなので、[手順 6](worker-storage.md#6-bcm-の-disksetup-を運用用へ切り替える) で OS だけの運用用へ切り替える。その後にデータ保持を検証し、個別にディスクを識別して node005・006 へ広げる。今回の状態確認では設定変更・保持試験は行っていない。
 2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを別途確認する。ヘッドの shorewall6 / fwupd-refresh の失敗原因・対応は今回再検証しておらず、別途確認する。
 3. Kubernetes のコントロールプレーン・etcd の配置と、[ネットワークのアドレス設計](requirements.md#構築前に確認する事項) を確定して構築し、各ノードの役割・Ready 状態と基本動作を確認する。
-4. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。
+4. Kubernetes 構築後、[etcd バックアップ・リストア試験](etcd-backup-restore.md) の対象版と multi-member 復旧順を確定する。廃棄可能な環境と停止時間を確保してから実行し、専用 resource と API / etcd / Node の復元結果を記録する。
+5. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。
 
 ヘッドの実パーティション構成は記録済み。CUDA の選択意図・導入結果は引き続き未確認。詳細な未確認事項は [BCM インストール記録](bcm-installation.md#残る確認事項) を参照する。
 

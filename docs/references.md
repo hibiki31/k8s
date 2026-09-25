@@ -99,6 +99,8 @@ Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の比較は [BCM / Kubernetes
 
 etcd のメンバー管理・バックアップ用 `cm-etcd-manage` の提供状況と、`PATH` にない場合の確認方法は [`cm-etcd-manage` が見つからない場合の調査](bcm-etcd-management.md) に分離した。2026-09-25 に BCM 11 / 11.34.0 の公式 Release Notes、DGX SuperPOD / BasePOD Update Guide、手元の製品 PDF と本ヘッドのインストール済みファイルを照合した。
 
+同日に [etcd バックアップ・リストア試験](etcd-backup-restore.md) を作成した。Snapshot 取得例は [NVIDIA DGX Kubernetes Updates](https://docs.nvidia.com/dgx-superpod/update-guide/latest/kubernetes-updates.html)、API server 停止を含む復元原則と snapshot status は [Kubernetes: Operating etcd clusters](https://kubernetes.io/docs/tasks/administer-cluster/configure-upgrade-etcd/)、新しい logical cluster として復元する性質は [etcd 3.5 Disaster recovery](https://etcd.io/docs/v3.5/op-guide/recovery/) を根拠とした。BCM の multi-member 復旧順は公開資料で確認できず、未確定としている。
+
 | 項目 | 章・PDFページ | 資料で確認できた内容と本検証での扱い |
 |---|---|---|
 | 導入方式と版 | 第4章 p.27、§4.2 pp.28-29 | BCMはKubernetesの導入にkubeadmを使用する。導入可能な版は `cm-kubernetes-setup --list-versions` と実パッケージで確認し、本環境の採用版を決める |
