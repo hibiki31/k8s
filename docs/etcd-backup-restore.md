@@ -415,3 +415,69 @@ kubectl -n calico-system get pods -o wide
 CP 3 台と etcd 3 メンバーは同義ではない。kubectl で一覧を取得できるという報告だけでは etcd の更新処理が正常とは確定しない。対象クラスタの管理端末で `kubectl --request-timeout=10s get --raw='/readyz?verbose'` を追加確認する（未実行例）。3 投票メンバーの quorum は 2 である。[etcd FAQ](https://etcd.io/docs/v3.3/faq/) の原則を参照した（2026-09-25 閲覧、障害環境の etcd 版は未確認）。
 
 Codex の調査記録: リポジトリルートで `git status --short --untracked-files=all` と README・本書・検証状況を `sed` で確認（開始時変更なし）。`cm-etcd-manage` の status と endpoint 処理を `rg` / `sed` で読み、長い初回出力の省略後に行 350–415 を個別再読した。Web で etcd 公式の quorum 説明を確認し、Python で本書と検証状況を追記した。ツール実装のパッケージ版は前節の確認結果を引き継ぎ、今回は再照会していない。障害環境の実コマンドは実行していない。目的・期待結果は 1 台表示の意味を区別して復旧順を判断すること。実際の成果は判定手順とユーザー報告の保存であり、member list と health の原出力待ち。証跡は本タスクのツール出力・チャット・Git 差分。保存時は既定のステージ済み差分・Markdown・公開情報・input 除外確認と公開用汎用名義のコミットを行う。実値・第三者原本は追加せず、対象は 2 文書。過去履歴の公開監査と push は対象外。
+
+## 2026-09-25: 1 台復元後の正常応答と 3 台構成への復帰
+
+### ユーザー報告と判断
+
+ユーザーから「本来 3 台構成だが、バックアップ・リストア確認で 1 台を復元した状態」「kubectl の確認は全項目 OK、最後に check passed」と追加報告を受けた。直前に案内した `/readyz?verbose` の確認成功という文脈で扱うが、正確なコマンド・出力・実施時刻・restore の実行順は未共有。BCM 11.33 という報告を引き継ぐ。復元ノードと他 2 台の識別子は公開文書では `<RESTORED_NODE>`、`<REJOIN_NODE_2>`、`<REJOIN_NODE_3>` に匿名化する。
+
+この報告は、復元ノードを単一メンバーとする新しい etcd クラスタで API が正常応答している状態と整合する。先の「旧 3 投票メンバー中 1 台だけ稼働し quorum 不足」という分岐をこの状況の結論にはしない。API 健全性確認の成功はユーザー報告として記録するが、3 メンバーの復旧、全 Node Ready、バックアップ時点のデータ一致は未確認。
+
+本ヘッドの確認済み実装では、`restore` は対象 1 台だけの `--initial-cluster` を指定して復元する。`add` は learner 追加→昇格→datanode 設定の順に処理する。したがって、この方法で 1 台復元した場合の残る 2 台は、稼働中の復元クラスタへ 1 台ずつ追加する。各ノードへ同じ単一ノード restore を繰り返す手順にはしない。[etcd 3.5 runtime reconfiguration](https://etcd.io/docs/v3.5/op-guide/runtime-configuration/) も、復旧クラスタへの逐次追加と learner の同期後昇格を説明する。
+
+### 条件付き復帰手順（未実行）
+
+実行場所は BCM ヘッドの root shell。復元 node を正とすること、元の snapshot を保持すること、対象クラスタの BCM 割当と実際の member list が復元ノード 1 台であること、旧 2 台の etcd が旧データで独立稼働していないこと、SSH / etcd package / peer 通信を前提とする。以下の変数は実対象へ置換する。
+
+```bash
+KUBE_CLUSTER='<KUBE_CLUSTER>'
+REJOIN_NODE_2='<REJOIN_NODE_2>'
+REJOIN_NODE_3='<REJOIN_NODE_3>'
+/cm/local/apps/cmd/scripts/cm-etcd-manage --help
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" status
+```
+
+11.33 のヘルプで `add` が learner 追加・昇格を行うことを確認する。1 台の登録を厳密に確認するには、**復元した etcd ノード**で対象クラスタの module を読み込む。次は、本ヘッドのツールが使う形式に合わせた未実行例。module が失敗した場合は後続を実行しない。
+
+```bash
+KUBE_CLUSTER='<KUBE_CLUSTER>'
+. /etc/profile.d/modules.sh
+module load "etcd/kube-$KUBE_CLUSTER" && etcdctl member list --write-out=table
+```
+
+追加対象 2 台は、復元後の member / learner および BCM の対応 overlay に未登録、BCM の EtcdHost role の spool が空であることが必要。空かどうかは実際の spool パスを確認し、ノード上で `ls -la '<ETCD_SPOOL>'` を使う。旧データが残る場合は、対象 etcd の停止と退避、BCM role とデータの整理手順を確定してから追加する。データディレクトリを推測して削除しない。`remove` はこの版では overlay 変更だけでなく CA・spool の削除も伴うため、単に add が失敗したという理由だけで実行しない。復元した正常ノードを削除・初期化しない。
+
+追加前には元 snapshot と別に現在の復元データを保存する。確認した backup 実装はヘッドと保存元 etcd ノードの両方で同じパスのディレクトリが必要。次のディレクトリ作成を **ヘッドと復元した etcd ノードそれぞれの root shell** で同じ絶対パスに対して行い、その後 backup をヘッドで実行する。共有領域でない場合、snapshot は etcd ノード側に作成されるため、保持先を確認して保全する。
+
+```bash
+umask 077
+ETCD_BACKUP_DIR='<PRIVATE_BACKUP_DIR>'
+install -d -m 700 "$ETCD_BACKUP_DIR"
+# 以下はヘッドでのみ実行
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" backup "$ETCD_BACKUP_DIR"
+```
+
+成功と保存先の実ファイルを確認後、1 台だけ追加する。
+
+```bash
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" add "$REJOIN_NODE_2"
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" status
+```
+
+2 メンバーが healthy で learner でないことを確認してから 3 台目へ進む。投票メンバー 2 台の間は両方の稼働が必要なので、正常ノードを再起動しない。
+
+```bash
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" add "$REJOIN_NODE_3"
+/cm/local/apps/cmd/scripts/cm-etcd-manage --kube-cluster "$KUBE_CLUSTER" status
+```
+
+追加が途中失敗したら停止し、member / learner・BCM overlay・ログを確認する。既に learner に登録されて同期完了している場合は `promote <NODE>` が再開手段になり得るが、`add` をそのまま繰り返さない。11.33 と本ヘッドの実装同一性は未確認。[11.34.0 Release Notes](https://docs.nvidia.com/base-command-manager/bcm-11-release-notes/bcm11-34-0.html) には旧不具合由来の etcd role 修復が記載されているため、overlay 不整合で止まった場合は対象版の処置を確認し、ツールの無確認の差し替えや role の推測変更を行わない。
+
+etcd 3 台の正常化後、既存の PKI / manifest / kubeadm YAML を前節の方法で退避し、BCM の実メンバー割当との一致を確認する。次にヘッドで `cm-kubeadm-manage --kube-cluster "$KUBE_CLUSTER" update_configmap`（実体は `/cm/local/apps/cmd/scripts/`）を実行し、**障害 CP から 1 台ずつ** `update_apiserver <CP_NODE>` を実行する。API の etcd クライアント証明書欠落と接続先設定を修復し、各回で当該 CP の API ログ・継続稼働と `/readyz`・Node Ready を確認する。正常だった CP の manifest に古い endpoint が残る場合も、別 CP の復旧確認後に更新する。ConfigMap の更新だけでは全 API manifest は更新されない。最終的に etcd 3 台 healthy / 全て投票メンバー、API 3 台稼働、全期待 Node Ready、[復元データの比較](#5-復元結果を簡易確認する)を別々に確認する。
+
+### Codex の調査・記録
+
+2026-09-25、実行者 Codex。リポジトリルートで `git status --short --untracked-files=all`、README・検証状況・本書の `sed` を実行（開始時変更なし）。インストール済み `cm-etcd-manage` を `rg` / `sed` で読み、restore（991–1100 付近）、add_learner（686–824）、promote（829–903）、remove（537–652）、CLI dispatch、module 読み込みを確認した。さらに backup（920–990）を読み、ヘッドと etcd ノードの両方で保存先が必要なため、作成例をステージ後のレビューで修正し再ステージした。初回の長い出力は一部省略され、必要な処理を個別に再読した。`--kube-cluster placeholder add --help` と `promote --help` はヘルプ表示成功、`/var/log` 読み取り専用の警告あり。ヘルプ以外の実環境操作は実行していない。本ヘッドのパッケージ版は前節の確認結果を引き継ぐ。
+
+Web で上記 etcd / NVIDIA 公式資料を確認し、Python で本書と検証状況を更新した。目的・期待結果は、1 台復元と API 健全性成功の報告を踏まえ、残りの etcd 追加と API 設定修復の順を示すこと。実際の成果は条件付き手順と報告の保存。版差、member list、旧データ / overlay 整理状態、追加・証明書修復・復元データ一致は未確認。証跡はユーザー報告・ツール出力・Git 差分・公式資料（2026-09-25 閲覧）。対象 2 文書のステージ済み差分・Markdown・公開情報・input 除外を確認して公開用汎用名義でコミットし、ID と残変更を報告する。識別子は匿名化、原本・秘密情報は追加せず、push・過去履歴全体の監査は対象外。
