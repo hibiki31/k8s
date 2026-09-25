@@ -14,6 +14,8 @@
 
 2026-09-25 に利用者から、Kubernetes コントロールプレーンが `CIDRNotAvalible` と表示され `NotReady` であるとの報告があった。チャット上の綴りは正式なイベント理由 `CIDRNotAvailable` を指すものとして切り分ける。元のイベント、Node condition、Kubernetes / CNI 版、Pod / Service CIDR、controller-manager ログは未共有で、Codex は実クラスタを照会していない。イベント理由の実表記、`CIDRNotAvailable` と `NotReady` の因果関係および原因は未確認である。変更前の採取項目と判定方法を [CIDRNotAvailable / NotReady 切り分け](kubernetes-cidr-troubleshooting.md) に整理した。
 
+2026-09-25 の追加報告で、NotReady の Conditions に `kubelet stopped posting node status` とあることが分かった（ユーザー報告、原出力未共有）。対象環境と先の CIDR 障害・etcd 復旧との関連は未確認。[状態更新停止の確認と条件付き復旧手順](kubernetes-cidr-troubleshooting.md#43-kubelet-stopped-posting-node-status-の確認と条件付き復旧) に従い、対象ノードの kubelet ログと API 到達性を優先して確認する。Codex による実環境操作・復旧確認は未実施。
+
 ## 現在の状況
 
 | 項目 | 状態 | 根拠・確認範囲 |

@@ -1,6 +1,6 @@
 # Kubernetes の `CIDRNotAvailable` / `NotReady` 切り分け
 
-2026-09-25 に利用者から、Kubernetes コントロールプレーンが `CIDRNotAvalible` と表示され、`NotReady` になっているとの報告を受けた。チャット上の綴りは Kubernetes の正式なイベント理由 `CIDRNotAvailable` を指すものとして本書を整理する。本書は、原因を確定する前に行う読み取り専用の切り分け手順である。利用者から元のイベント、Node condition、ログ、Kubernetes 版、採用 CNI、Pod CIDR / Service CIDR はまだ共有されていないため、イベント理由の実表記、障害原因、復旧方法は未確定である。
+2026-09-25 に利用者から、Kubernetes コントロールプレーンが `CIDRNotAvalible` と表示され、`NotReady` になっているとの報告を受けた。チャット上の綴りは Kubernetes の正式なイベント理由 `CIDRNotAvailable` を指すものとして本書を整理する。本書は、原因を確定する前に行う読み取り専用の切り分けと、更新停止時の条件付き復旧手順をまとめる。利用者から元のイベント、Node condition、ログ、Kubernetes 版、採用 CNI、Pod CIDR / Service CIDR はまだ共有されていないため、イベント理由の実表記、障害原因、復旧方法は未確定である。
 
 表示名の正式な綴りは `CIDRNotAvailable`。Kubernetes の RangeAllocator 実装では、Node に割り当てる CIDR を `AllocateNext()` で取得できないときに、この理由のイベントを記録する。一方、Node の `Ready=False` / `Unknown` は kubelet が報告する別の状態である。したがって、`CIDRNotAvailable` が同じ時刻に出たという理由だけで、`NotReady` の直接原因と断定しない。
 
@@ -210,6 +210,76 @@ sudo systemctl status kubelet --no-pager
 
 API 疎通が失敗する場合は、本環境の内部ネットワーク、BCM 経由の DNS / routing、firewall を確認する。到達できる場合は kubelet ログの証明書・認証・Node 名不一致を確認する。全コントロールプレーンで同時にサービスを再起動せず、原因と影響範囲を確定してから復旧計画を作る。
 
+### 4.3 `Kubelet stopped posting node status` の確認と条件付き復旧
+
+このメッセージは状態更新が途絶えたことを表し、kubelet プロセス停止そのものを確定しない。API 到達性・認証失敗・ノード停止でも起こり得る。以下は **未実行の手順**。systemd を使う Linux が前提で、管理端末には Node / Lease の読み取り権限、対象ノードには sudo 権限が必要。`<...>` は実値を伏せたプレースホルダーで、実行時に置き換える。
+
+1. **管理用 kubectl の実行場所**で対象と更新時刻を確認する。
+
+   ```bash
+   NODE='<NODE_NAME>'
+   kubectl get nodes -o wide
+   kubectl describe node "$NODE"
+   kubectl -n kube-node-lease get lease "$NODE" -o jsonpath='{.spec.renewTime}{"\n"}'
+   ```
+
+2. **NotReady の対象ノードに SSH またはコンソールで接続**し、再起動前にログを採取する。
+
+   ```bash
+   date -Is
+   sudo systemctl status kubelet --no-pager -l
+   sudo journalctl -u kubelet --since '-30 minutes' --no-pager -n 200
+   sudo systemctl status containerd --no-pager -l
+   sudo journalctl -u containerd --since '-30 minutes' --no-pager -n 100
+   df -h
+   df -i
+   free -h
+   swapon --show
+   timedatectl status
+   ```
+
+   `status` の非ゼロ終了は停止・失敗を表す場合があるため、後続のログ確認も行う。containerd は採用している場合だけ確認し、別 runtime は実際のサービス名に読み替える。サービスが見つからなければ `systemctl list-unit-files --type=service | grep -Ei 'kubelet|containerd|crio|cri-o'` で配置を確認する。SSH 不可の場合は仮想化ホストから VM の電源・コンソール・ネットワークを先に確認する。
+
+3. **kubelet が停止・失敗している場合**は、ログの設定不備・容量不足などを解消してから、対象 1 台だけ起動し直す。意図的なメンテナンス停止中でないことを確認する。
+
+   ```bash
+   sudo systemctl restart kubelet
+   sudo systemctl status kubelet --no-pager -l
+   sudo journalctl -u kubelet --since '-5 minutes' --no-pager -n 100
+   ```
+
+   containerd も停止していて、それが採用 runtime である場合のみ、先に `sudo systemctl start containerd` を実行して active を確認する。稼働中の runtime の一律再起動は行わない。コントロールプレーンは 1 台ずつ扱い、すぐ失敗を繰り返す場合はログの原因修正に戻る。
+
+4. **kubelet が active でも更新しない場合**は、対象ノードから kubelet の実際の API 接続先を確認する。`sudo systemctl cat kubelet` の起動設定から `--kubeconfig` のパスを確認する（出力は公開しない）。kubeadm の標準パスの場合、接続先の行だけ表示する例は次のとおり。
+
+   ```bash
+   sudo grep -E '^[[:space:]]*server:' /etc/kubernetes/kubelet.conf
+   getent hosts '<API_HOST>'
+   nc -vz -w 5 '<API_HOST>' <API_PORT>
+   ```
+
+   `<API_HOST>` は URL のホスト部分、`<API_PORT>` はそのポートで、6443 と決めつけない。`nc` が未導入なら別途利用可能な TCP 確認手段を使う。TCP 接続成功だけでは TLS・認証・API 健全性は証明できない。管理用端末の `kubectl get --raw='/readyz?verbose'` も API 側の切り分けに使えるが、対象ノードの経路・資格情報の正常性は証明しない。
+
+| kubelet ログの例 | 次の確認・修復 |
+|---|---|
+| `connection refused` / `i/o timeout` / `no route to host` | API 待受、LB、DNS、経路、firewall。kubelet 再起動だけでは直らない |
+| `x509` / `expired` / `not yet valid` | 時刻同期と実際のクライアント・サーバー証明書の期限。証明書を一括削除・再生成しない |
+| `Unauthorized` / `Forbidden` | kubelet の認証情報と Node 名・認可の整合性 |
+| `running with swap on is not supported` | swap を拒否する構成か確認。メモリ余裕を確認して swap 無効化し、BCM の永続設定も整合させる |
+| `no space left on device` / OOM | ディスク・inode・メモリ不足。データを無差別削除せず原因を解消 |
+| `NetworkPluginNotReady` | 更新再開後の別の NotReady 原因として 4.1 の CNI 確認に進む |
+
+5. **管理用 kubectl の実行場所**で復旧確認する。
+
+   ```bash
+   kubectl wait --for=condition=Ready "node/$NODE" --timeout=180s
+   kubectl get node "$NODE" -w
+   # 数分観察後に Ctrl-C
+   kubectl -n kube-node-lease get lease "$NODE" -o jsonpath='{.spec.renewTime}{"\n"}'
+   ```
+
+   期待結果は `Ready=True` の継続、Lease の更新再開、ログで更新失敗が反復しないこと。timeout は未復旧として記録する。Pod や CNI の動作は別途確認し、Node Ready だけでクラスタ全体の復旧完了にしない。
+
 ## 5. 観測結果から原因を確定する
 
 | 証拠の組み合わせ | 判定 | 復旧方針 |
@@ -291,3 +361,13 @@ API 疎通が失敗する場合は、本環境の内部ネットワーク、BCM 
 期待結果は、状態採取から Node CIDR 容量、設定差、CNI、kubelet / API 到達性までを安全な順序で切り分け、証拠に応じて復旧方法を選べること。本書に読み取り専用の採取順、判定表、安全条件、復旧後の確認条件を整理した。
 
 実際の障害原因、対象 Node、発生日時、Kubernetes / CNI 版、CIDR、復旧成否は未確認。証跡は利用者報告、本作業のツール出力、Git 差分、上記の公式資料。公開情報チェックの未解決事項はない。次の作業は「まず共有する最小限の証跡」を実クラスタで採取し、結果を本書と [検証状況](validation.md) に追記することである。
+
+## 2026-09-25: kubelet の状態更新停止に関する追加報告と手順整備
+
+- ユーザー報告: Node が NotReady で、Conditions に `kubelet stopped posting node status` と表示。対象名・環境、観測時刻、表示に至るコマンド・画面操作、Ready の Status / Reason、ログ、実行バージョンは未共有。先の etcd 復旧や CIDR 障害との関連は未確認。
+- Codex の実施場所・前提: 文書リポジトリのルート。ローカル文書編集と Git コミット権限を使用。Git 2.43.0、Python 3.12.3。実クラスタには接続していない。
+- 実行順: `pwd` / `rg --files` / `git status --short --untracked-files=all` → README・AGENTS と環境・既存切り分け・検証状況・保守・版関連文書を `cat` / `rg` / `sed` / `tail` で確認 → Kubernetes 公式資料を Web 検索・閲覧 → Python で本書と検証状況を更新。長い出力は一部省略されたため、関連節を個別に再取得した。開始時の変更はなく、環境文書のパスワード欄は既にプレースホルダーだった。
+- 根拠: 今回のユーザーチャット、Codex ツール出力、[Node Status](https://kubernetes.io/docs/reference/node/node-status/) と [Troubleshooting Clusters](https://kubernetes.io/docs/tasks/debug/debug-cluster/)（2026-09-25 閲覧、現行版。本環境の Kubernetes 版は未確認）。既存環境記録は再検証していない。
+- 保存手順: `git diff --check`、Markdown のコードブロック・相対リンク確認後、対象 2 文書を `git add`。`git diff --cached --name-status` / `--check` / 差分全文と関連文脈、秘密情報候補、`git ls-files -- input`、`git check-ignore -v -- input/publication-check.txt` を確認してコミットする。コミット名義は公開用の `Repository Maintainer <maintainer@example.invalid>` を使用。コミット後は `git status --short` と ID を確認する。
+- 期待結果: 診断と条件付き起動・復旧確認の手順を、実行済み調査と分けて保存する。実際の成果は 4.3 の手順追加と検証状況への報告反映。実環境用コマンドはすべて未実行で、復旧成否は未確認。
+- 公開確認範囲: 今回のステージ済み 2 文書の差分と文脈、ファイル名・コミット情報・input 非追跡と除外。実値は追加せず、ノード名・接続先は置換用表記。原本転載なし。公開・push と過去履歴全体の監査は対象外。確認結果と残変更は完了報告に記載する。
