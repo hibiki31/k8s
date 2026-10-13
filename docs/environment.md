@@ -133,9 +133,7 @@ flowchart TB
 
 各ワーカーには、OS 用ディスクとは別に **256 GiB の空ディスク**を追加しています。QEMU で追加ディスクを認識したことは初期資料に記録されています。
 
-今後、ゲスト OS 内で追加ディスクを確認し、LVM のボリュームグループを作成して TopoLVM から利用する計画です。LVM 初期化、TopoLVM の導入、ボリュームの動的割り当ては未実施です。
-
-実デバイス名・StorageClass 名は未記録です。9 月 23 日に [ワーカーの LVM 設計案](worker-storage.md) を作成し、追加ディスクに `vg_topolvm` と未マウントの `bcm_seed` 4 MiB を作る XML を静的検証しました。VG / LV 名は提案値で、未設定です。実作業時に OS 用ディスクと追加ディスクの対応を確認してから確定します。
+各ワーカーの追加ディスクから TopoLVM で LV を動的作成する計画です。node004 は [10 月 14 日の準備](#2026-10-14-の導入前準備) までに vdb1 の `vg_topolvm` と未マウントの `bcm_seed` 4 MiB、運用用レイアウト・通常再起動での保持を確認しました。node005・006 の実デバイスと LVM は未確認です。TopoLVM 本体・StorageClass・PVC の動的割り当ては未実施です。
 
 ## ソフトウェアと設定の確定状況
 
@@ -376,3 +374,25 @@ Codex が 00:48～00:49 JST に読み取り専用で照会。手順・一次資�
 node001～004 は Ubuntu 24.04.4 LTS / 6.8.0-106-generic。node001～003 はメモリ約 15 GiB 中 1.2 GiB 使用、ルート 112 GiB 中 13 GiB 使用（12%）。node004 はメモリ約 31 GiB 中 1.4 GiB 使用、ルート 240 GiB 中 16 GiB 使用（7%）。4 台とも swap パーティション 16 GiB が有効・使用量 0、kubelet.service / containerd.service は not-found、標準 kubelet 設定なし、kubectl は PATH 上になかった。標準外の配置・導入履歴は未調査。
 
 ヘッドは Cluster Manager 11.0 / CMDaemon 3.1 / Build Index 165270。node005・006 は BCM の初期割り当てが残り、MAC 未登録。既存の未展開記録と整合するが、ゲスト内部や VM 電源は未確認。
+
+## 2026-10-14 の導入前準備
+
+Codex が同日 00:54 以降に再確認・設定変更を実施した。手順と失敗・再試行は [導入前準備記録](kubernetes-preparation.md)、全体の進捗は [検証状況](validation.md#2026-10-14-の導入前準備) を参照。ユーザー指定により Kubernetes 本体のインストールは行わない。
+
+| 項目 | 実測・保存済みの設定 |
+|---|---|
+| node001～003 | 各 4 vCPU、OS 用 vda 128 GiB、予定 IP / 経路、ローカル XFS ルート。cmd active・NTP 同期・失敗サービス 0 |
+| node004 の BCM disksetup | `/dev/vda` だけの運用用 XML へ変更。EFI 100M / swap 16G / XFS max は維持し、vdb と volumeGroup 定義を除外 |
+| node004 の再展開保護 | datanode yes、通常 AUTO、nextinstallmode・明示消去予約・ノードと default カテゴリの initialize / finalize は空 |
+| node004 の実 LVM | vdb1 の PV 1 個、vg_topolvm、PE 4 MiB、bcm_seed 4 MiB の LV 1 個。試験用 LV は削除済み |
+| node004 の VG 未割当 | `274869518336` bytes = 255.9921875 GiB。初回作成後と同じ空き容量 |
+| node004 の AUTO 再起動 | PXE → SYNC → 通常 OS 起動。PV / VG / LV の識別子・サイズ・個数・試験 LV 全体のハッシュを照合し保持を確認。VG / LV の手動活性化は不要 |
+| node005・006 | BCM の MAC 未登録・初期 IP のまま。別管理チャットの同日照会では VM 停止中、既存の内部用・Multus 用 NIC は計画の 2 本。ディスク対応・容量・内容は今回未確認 |
+| IPv4 外部通信 | ヘッドと node001～004 で DNS・直接 HTTPS 200 を確認。CP 3 台の初回 getent 失敗は再試行で再現しなかった |
+| ヘッドの IPv6 | shorewall6 は interfaces の有効定義なしで failed。IPv6 の外部 default route はなく、named に IPv6 宛て到達不能ログ。IPv4 shorewall active・転送有効。設定変更なし |
+| BCM ライセンス | verify-license verify 成功。利用 5 / 上限 10 ノードで、予定のヘッド + 6 台は上限内。識別情報・有効期間の実値は非掲載 |
+| cm-setup | `11.0-124257-cm11.0-7f8393643d`。実機の導入候補・認定表示は [バージョン確認](bcm-kubernetes-versions.md#2026-10-14-の実機確認) |
+
+swap は導入前の 16 GiB 有効状態を維持する。BCM setup に swap 無効化・モジュール・sysctl・containerd 設定工程があることを実装で確認したが、今回は実行していない。構築後と再起動後の確認が必要。Kubernetes の版・CNI・API エンドポイント・Pod / Service / Multus の CIDR は未確定で、クラスタ設定は未適用。
+
+OS-only FULL 再展開試験はユーザー指示で今回省略した。AUTO の合格を FULL 時の保持実証として扱わない。広範な OS バックアップも未実行。

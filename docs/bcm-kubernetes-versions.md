@@ -2,7 +2,21 @@
 
 確認日: 2026-09-22。対象は **Ubuntu 24.04 上の BCM 11.34 / 11.33 と、BCM の `cm-kubernetes-setup` による Kubernetes 導入**。公式資料の調査結果であり、本環境でのインストール・動作確認結果ではない。
 
-## 比較の要点
+## 2026-10-14 の実機確認
+
+Codex が BCM ヘッドの既存管理権限で次を実行した。Kubernetes 本体の導入は開始していない。
+
+```bash
+dpkg-query -W -f='${Package}\t${Version}\n' cm-setup
+env -u PYTHONPATH cm-kubernetes-setup --help
+env -u PYTHONPATH cm-kubernetes-setup --list-versions
+```
+
+cm-setup は `11.0-124257-cm11.0-7f8393643d`。修正後のヘルプ・一覧照会は終了 0。一覧は **1.36 / 1.35 / 1.34 のすべてに NVIDIA AI Enterprise certified** と表示した。これは今回の実機表示であり、後述の 9 月 22 日に読んだマニュアル例とは区別する。パッチ版・採用版・Multus / TopoLVM との組み合わせは未確定。
+
+初回は独自 PYTHONPATH に置いた調査スクリプト `inspect.py` が Python 標準ライブラリと衝突し、ヘルプと一覧の双方が終了 1。スクリプトを改名し、独自 PYTHONPATH を除いた同じ読み取り照会で成功した。BCM の package 修正・更新は行っていない。[導入前準備記録](kubernetes-preparation.md) に操作順を記載。証跡は `input/80-preinstall/cm-setup-version.json`、`kubernetes-setup-help*.json`、`kubernetes-*versions*.json`。
+
+## 比較の要点（2026-09-22 の資料調査）
 
 **両方の BCM で Kubernetes 1.34 系を使用する公式の導入例がある。現行 BCM 11 マニュアルの導入候補は 1.34 / 1.35 / 1.36 だが、各 ISO・パッケージで選択できる全バージョンは実機確認が必要。** BCM の `11.34` / `11.33` と Kubernetes の `1.34` / `1.33` は別の番号で、一対一の対応ではない。
 
@@ -37,7 +51,7 @@
 
 ## 実機で確定する方法
 
-以下は **Ubuntu 24.04 の BCM ヘッドノード**で、BCM と管理ツールが導入済みであることを前提とする確認用コマンド。今回の調査では未実行。
+以下は **Ubuntu 24.04 の BCM ヘッドノード**で、BCM と管理ツールが導入済みであることを前提とする確認用コマンド。9 月 22 日の資料調査では未実行。後続の実行結果は [10 月 14 日の実機確認](#2026-10-14-の実機確認) を参照。
 
 ```bash
 # BCM のバージョン情報

@@ -30,7 +30,7 @@
 
 ## 2026-10-14 の各ノード実機確認
 
-00:48～00:49 JST、Codex が BCM と SSH で再照会した最新の観測。後続の従来表は過去時点の記録であり、現在の稼働判定はこちらを優先する。詳細は [実行手順・証跡](node-status.md)。
+00:48～00:49 JST、Codex が BCM と SSH で再照会した同日最初の観測。後続の変更・確認は [導入前準備](#2026-10-14-の導入前準備) を優先する。詳細は [実行手順・証跡](node-status.md)。
 
 | 対象（VM / BCM 名） | BCM 状態 | SSH・OS 確認 | 注意点 |
 |---|---|---|---|
@@ -43,6 +43,18 @@
 | tk8s-worker3 / node006 | DOWN / unassigned | SSH は No route to host | 同上 |
 
 Kubernetes の Ready / API / etcd は今回未確認。9 月 25 日にユーザーが報告した障害環境との同一性は未確認であり、その復旧成否を今回の結果から判定しない。構成の観測値は [環境構成](environment.md#2026-10-14-の状態確認) に記載。要件全体の合格状況は変更しない。
+
+## 2026-10-14 の導入前準備
+
+ユーザーの訂正指示により Kubernetes インストール手前までを対象とした。[実施記録](kubernetes-preparation.md) と [構成の正本](environment.md#2026-10-14-の導入前準備) を参照。
+
+- node001～004 は OS・予定 IP / 経路・時刻同期・cmd・失敗サービスなしを確認。DNS の初回失敗は再試行で解消し、直接 IPv4 HTTPS 成功。
+- node004 は OS-only の disksetup へ切替済み。通常 AUTO の PXE / SYNC 再起動後に LVM 識別子と試験データ保持を確認。検証用 LV を削除し seed のみへ復帰した。
+- node005・006 は未登録・未展開。別管理チャットの照会で VM 停止と 2 NIC を確認したが、ディスク情報・起動操作が必要。BCM ヘッドから物理ホストへの直接 SSH は信頼済みホスト鍵・利用可能な agent がなく利用できない。別チャットへの送信機能もこのセッションにはなく、情報照会と電源操作に限定した依頼文を利用者へ提示した。
+- OS-only FULL 保持試験と広範なバックアップは自動承認レビューが拒否。その後ユーザーが通常再起動までと指定したため、両方未実行のまま今回の範囲から外した。
+- BCM のライセンス上限は予定台数を満たし、cm-kubernetes-setup のヘルプ・導入候補一覧まで確認した。swap / runtime / kubelet / CNI / etcd の構築工程は未実行。
+
+**6 台全体の導入前準備は未完了。** 残るワーカー 2 台のディスク照合・BCM 登録・OS / LVM 展開・運用用切替・通常再起動での保持確認が必要。ヘッドの shorewall6 は既存の failed のままで、IPv4 通信を妨げる事象は今回観測していない。
 
 ## 現在の状況
 
@@ -70,9 +82,9 @@ Kubernetes の Ready / API / etcd は今回未確認。9 月 25 日にユーザ�
 | CUDA 追加パッケージ | 選択画面確認 | S21・S22 で選択あり。GPU なし構成での選択理由と導入結果は未確認 |
 | 内部ネットワークから外部へのルーティング・NAT | ヘッド設定・cp1～3・node004 の外部疎通を確認 | node004 でもヘッド経由の経路、外部 DNS、docs.nvidia.com への IPv4 HTTPS HTTP 200 を確認。ヘッド・cp1～3 は以前の結果を引き継ぐ。node005・006 は未確認 |
 | R-01: BCM による 6 台への OS 展開 | 4 / 6 台で初回展開・起動後の基本確認完了 | node004 で FULL 同期完了・UP・SSH・OS / LVM・失敗サービス 0・外部 HTTPS を確認。node001～003 は前回の成功結果を引き継ぐ。node005・006 は未登録。[cp1～3](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認)・[node004](worker-storage.md#2026-09-23-node004-の初回展開後確認) |
-| R-02: Kubernetes クラスタ構築・基本動作 | 利用者から障害報告・原因未確認 | 2026-09-25 にコントロールプレーンの `CIDRNotAvalible`（正式なイベント理由 `CIDRNotAvailable` として切り分け）/ `NotReady` 報告あり。元出力・版・CIDR・CNI は未共有で、構築完了や全 Node の状態は未確認。まず [読み取り専用の切り分け](kubernetes-cidr-troubleshooting.md) を実施し、構築後・再起動後の swap 無効も別途確認する。以前の Base View B06 は Cluster Creation の Launch 表示だけで、構築完了の証跡ではない |
+| R-02: Kubernetes クラスタ構築・基本動作 | 本検証環境は未構築・今回は導入前まで | 10 月 14 日の照会で overlay・標準 kubelet 設定等の不存在を確認。別環境か未確定の 9 月 25 日の障害報告は [切り分け記録](kubernetes-cidr-troubleshooting.md) に保持し、本検証の構築済み証跡としない。導入後・再起動後の swap 無効も未検証 |
 | R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
-| ワーカーの LVM 初期化 | node004 の初回作成成功、運用用切替・保持試験は未実施 | vdb1 のみで vg_topolvm、PE 4 MiB、bcm_seed 4 MiB、残りが未割当と実測。BCM は初回用 XML のまま、次回モードは空。node005・006 と PVC 動作は未確認。[実施記録](worker-storage.md#2026-09-23-node004-の初回展開後確認) |
+| ワーカーの LVM 初期化 | node004 は運用用切替・AUTO 保持試験合格 | seed 4 MiB のみ、空き容量回復。OS-only FULL は今回省略。node005・006 と PVC 動作は未確認。[最新記録](kubernetes-preparation.md) |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
 | R-05: etcd バックアップ・リストア | 計画作成・未実施 | [専用 namespace による復元判定手順](etcd-backup-restore.md) を作成。現環境は Kubernetes 未構築で、別環境の版・構成・BCM multi-member 復旧順も未確認。snapshot 取得・差分作成・restore は実行していない |
 
@@ -82,9 +94,9 @@ Kubernetes の Ready / API / etcd は今回未確認。9 月 25 日にユーザ�
 
 ## 次の作業
 
-1. node001～004 の初回展開後確認は完了。node004 は BCM の disksetup が初回用のままなので、[手順 6](worker-storage.md#6-bcm-の-disksetup-を運用用へ切り替える) で OS だけの運用用へ切り替える。その後にデータ保持を検証し、個別にディスクを識別して node005・006 へ広げる。今回の状態確認では設定変更・保持試験は行っていない。
-2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを別途確認する。ヘッドの shorewall6 / fwupd-refresh の失敗原因・対応は今回再検証しておらず、別途確認する。
-3. 利用者報告の `CIDRNotAvailable` / `NotReady` について、[読み取り専用の切り分け](kubernetes-cidr-troubleshooting.md) に従い Node condition、イベント、Pod CIDR、controller-manager、CNI、kubelet の証跡を採取する。原因確定前に CIDR や manifest を変更しない。コントロールプレーン・etcd の実配置、Kubernetes / CNI 版、アドレス設計、全 Node の役割・Ready 状態と基本動作を記録する。
+1. node004 の運用用切替・通常再起動の保持確認は完了。node005・006 の VM ディスク用途・target・容量を物理ホスト側で確認し、[ワーカー展開手順](worker-storage.md) を適用する。物理ホスト側への依頼は情報照会と電源 ON / OFF のみとし、BCM 設定完了前に起動しない。
+2. libvirt 永続構成・Secure Boot など不足する記録、共有 SSH ホスト鍵の扱いを確認する。ヘッドの shorewall6 は IPv6 用 interfaces の定義なしで失敗しており、IPv6 を利用する場合は管理設定を整備する。今回の失敗ユニット一覧に fwupd-refresh はない。
+3. 今回は Kubernetes をインストールしない。次の構築時に導入版・CNI・API 接続先・アドレス範囲を確定し、専用コントロールプレーン 3 台と worker 3 台を選ぶ。別環境か未確定の利用者報告 `CIDRNotAvailable` / `NotReady` については、[読み取り専用の切り分け](kubernetes-cidr-troubleshooting.md) に従い Node condition、イベント、Pod CIDR、controller-manager、CNI、kubelet の証跡を採取する。原因確定前に CIDR や manifest を変更しない。コントロールプレーン・etcd の実配置、Kubernetes / CNI 版、アドレス設計、全 Node の役割・Ready 状態と基本動作を記録する。
 4. Kubernetes 構築後、[etcd バックアップ・リストア試験](etcd-backup-restore.md) の対象版と multi-member 復旧順を確定する。廃棄可能な環境と停止時間を確保してから実行し、専用 resource と API / etcd / Node の復元結果を記録する。
 5. Multus の追加ネットワークと、追加ディスクを利用した LVM / TopoLVM を構築し、要件ごとの確認結果を記録する。
 

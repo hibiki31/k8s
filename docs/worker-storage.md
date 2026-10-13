@@ -1,6 +1,6 @@
 # ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-整理日: 2026-09-23（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・UP・OS / LVM・通信の確認完了。BCM の disksetup はまだ初回用で、運用用への切替・保持試験は未実施。** node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。
+最終整理日: 2026-10-14（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・OS / LVM 確認に加え、OS-only の運用用切替と通常 AUTO 再起動の保持試験を完了。** OS-only FULL 再展開試験はユーザー指定で今回省略した。node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB の計画。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。最新の実施手順と失敗・再試行は [10 月 14 日の導入前準備](kubernetes-preparation.md#3-node004-を運用用-xml-に切り替え保持を試験する) を参照。
 
 ## 結論と構成案
 
