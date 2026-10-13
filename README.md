@@ -31,7 +31,7 @@ KVM / QEMU と libvirt を使用し、BCM ヘッドノードを含む 7 台の V
 | 2 | [BCM ライセンス登録手順と実施記録](docs/bcm-licensing.md) | ヘッドノード導入後、計算ノード展開前の登録。証明書更新と登録後の確認 |
 | 3 | [BCM の PXE・OS 展開手順](docs/bcm-pxe-provisioning.md) | ライセンス・NIC・ディスクの前提確認、最初の 1 台の展開・確認、その後の残り 5 台への展開 |
 | 4 | [ワーカーの LVM 構成・初回展開手順](docs/worker-storage.md) | node004 の先行展開、TopoLVM 用 VG と最小 LV、初回用・運用用 XML、再起動・OS 再展開後の保持試験 |
-| 5 | [Kubernetes 導入前の準備と実施記録](docs/kubernetes-preparation.md) | OS・通信・ライセンス確認、node004 の運用用切替と AUTO 再起動の保持試験、残るワーカーの準備 |
+| 5 | [Kubernetes 導入前の準備と実施記録](docs/kubernetes-preparation.md) | 6 ノードの OS・通信・ライセンス確認、3 ワーカーの VG 作成・運用用切替と AUTO 再起動の保持試験 |
 
 Kubernetes・Multus・TopoLVM 本体の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
 

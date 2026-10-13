@@ -1,6 +1,6 @@
 # ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-最終整理日: 2026-10-14（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・OS / LVM 確認に加え、OS-only の運用用切替と通常 AUTO 再起動の保持試験を完了。** OS-only FULL 再展開試験はユーザー指定で今回省略した。node005 も [初回展開・運用用切替・通常再起動の保持確認](kubernetes-preparation.md#7-node005-の初回展開と通常再起動試験) を完了。node006 は登録済み・未展開。VM ごとの OS / 追加ディスクはともに 256 GiB の計画。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。最新の実施手順と失敗・再試行は [10 月 14 日の導入前準備](kubernetes-preparation.md#3-node004-を運用用-xml-に切り替え保持を試験する) を参照。
+最終整理日: 2026-10-14（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・OS / LVM 確認に加え、OS-only の運用用切替と通常 AUTO 再起動の保持試験を完了。** OS-only FULL 再展開試験はユーザー指定で今回省略した。node005 も [初回展開・運用用切替・通常再起動の保持確認](kubernetes-preparation.md#7-node005-の初回展開と通常再起動試験) を完了。node006 も [同じ展開・保持確認](kubernetes-preparation.md#8-node006-の初回展開と通常再起動試験) を完了し、3 ワーカーの VG 準備が完了した。VM ごとの OS / 追加ディスクはともに 256 GiB の計画。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。最新の実施手順と失敗・再試行は [10 月 14 日の導入前準備](kubernetes-preparation.md#3-node004-を運用用-xml-に切り替え保持を試験する) を参照。
 
 ## 結論と構成案
 

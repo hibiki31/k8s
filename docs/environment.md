@@ -439,3 +439,15 @@ Codex が 01:32～01:38 JST に直接確認・展開した。[実行手順](kube
 | 保持確認 | AUTO → SYNC 再起動後に識別子と試験 LV 全体のハッシュ一致。試験 LV は削除済み |
 
 swap は 16 GiB 有効・使用 0 の導入前状態。Kubernetes・Multus・TopoLVM 本体は導入していない。OS-only FULL 再展開での保持は未検証。node006 の初回展開と通常再起動確認が残る。
+
+## 2026-10-14: node006 完了と導入前の最終状態
+
+01:46～01:51 JST、Codex が node006 の初回 FULL・OS-only 切替・AUTO → SYNC 再起動保持試験を実施。[手順と証跡](kubernetes-preparation.md#8-node006-の初回展開と通常再起動試験) を参照。
+
+node006 は 172.30.65.23/24、default via 172.30.65.1、8 CPU / 約 31 GiB、kernel 6.8.0-106-generic、vda3 XFS、EFI 100 MiB / swap 16 GiB。cmd active、失敗 unit 0、NTP 同期 yes、DNS 成功・直接 IPv4 HTTPS 200。追加 NIC は DOWN・IP なし。
+
+vdb1 の vg_topolvm は PE 4 MiB、PV 1、seed 4 MiB のみ。VG 容量 274873712640 bytes、空き 274869518336 bytes。試験 LV 全体のハッシュと LVM 識別子が再起動前後で一致し、試験 LV は削除済み。
+
+最終 BCM 一覧はヘッド + 6 ノード全 UP、確認待ちなし。3 ワーカーとも OS-only vda / datanode yes / AUTO、次回モードと消去予約空を再読確認。ライセンス検証終了 0、使用 7 / 上限 10。Kubernetes overlay は未作成。node001～005 の OS / 通信は同日の先行確認を引き継ぐ。
+
+今回の OS・ストレージ準備は完了。swap 無効化は BCM の Kubernetes 構築工程へ引き継ぎ、版・CNI・CIDR・API endpoint は未確定。Kubernetes・Multus・TopoLVM 本体は未導入、FULL 再展開保持は未検証。ヘッドの既存 shorewall6 failed は前工程の記録を引き継ぎ、今回は変更・再検証していない。
