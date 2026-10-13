@@ -1,6 +1,6 @@
 # ワーカーの初回展開と TopoLVM 用 LVM の手順
 
-最終整理日: 2026-10-14（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・OS / LVM 確認に加え、OS-only の運用用切替と通常 AUTO 再起動の保持試験を完了。** OS-only FULL 再展開試験はユーザー指定で今回省略した。node005・006 は未展開。VM ごとの OS / 追加ディスクはともに 256 GiB の計画。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。最新の実施手順と失敗・再試行は [10 月 14 日の導入前準備](kubernetes-preparation.md#3-node004-を運用用-xml-に切り替え保持を試験する) を参照。
+最終整理日: 2026-10-14（JST）。対象は BCM 名 node004～node006（ユーザーの node04～06）、対応する VM は [環境構成](environment.md#2026-09-22-の稼働後確認) を参照。**node004 は初回 FULL・OS / LVM 確認に加え、OS-only の運用用切替と通常 AUTO 再起動の保持試験を完了。** OS-only FULL 再展開試験はユーザー指定で今回省略した。node005・006 は [提供報告の照合・BCM 登録](kubernetes-preparation.md#6-worker23-の提供報告を照合して-bcm-に登録する) まで完了し、未展開。VM ごとの OS / 追加ディスクはともに 256 GiB の計画。構成の正本は [VM 一覧](vm-list.md)、進捗は [検証状況](validation.md)。最新の実施手順と失敗・再試行は [10 月 14 日の導入前準備](kubernetes-preparation.md#3-node004-を運用用-xml-に切り替え保持を試験する) を参照。
 
 ## 結論と構成案
 
@@ -26,7 +26,7 @@ BCM の制約を避ける別案として、OS だけ BCM で展開し、起動�
 
 ## 初回作成用 XML 案
 
-以下は自作の未適用テンプレート。**`/dev/OS_DISK` と `/dev/TOPO_DISK` はプレースホルダー**で、実デバイスではない。物理ホストの `virsh domblklist --details` / `dumpxml --inactive` のバックエンド・target と用途を照合してから置換する。両ディスクは同容量の計画なので、容量だけで識別しない。node004 は後続の [提供ログ確認](#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) で OS=`vda`、TopoLVM=`vdb` と整理できた。node005・006 は未確認。FULL でこの XML を適用すると、指定した両ディスクを初期化する。
+以下は自作の未適用テンプレート。**`/dev/OS_DISK` と `/dev/TOPO_DISK` はプレースホルダー**で、実デバイスではない。物理ホストの `virsh domblklist --details` / `dumpxml --inactive` のバックエンド・target と用途を照合してから置換する。両ディスクは同容量の計画なので、容量だけで識別しない。node004 は後続の [提供ログ確認](#2026-09-23-worker1-の起動前構成確認と-node004-用-xml-準備) で OS=`vda`、TopoLVM=`vdb` と整理できた。node005・006 も [10 月 14 日の提供報告](environment.md#2026-10-14-worker23-の照合と-bcm-登録) で同じ用途・target を照合した。FULL でこの XML を適用すると、指定した両ディスクを初期化する。
 
 ```xml
 <?xml version="1.0"?>

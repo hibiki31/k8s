@@ -2,7 +2,7 @@
 
 実施日: 2026-10-14（JST）。実行者は、明記したユーザー操作・報告を除き Codex。対象は BCM ヘッドと node001～node006。ユーザーの訂正により、今回の範囲は **Kubernetes のインストール手前まで**とし、Kubernetes・etcd・CNI の導入は実行しない。
 
-node004 の運用用ディスクレイアウトへの切替と、通常の AUTO 再起動後の LVM 保持を確認した。node005・006 は VM のディスク対応の確認と初回展開が残る。ユーザーは今回の OS-only FULL 再展開試験を省略し、通常再起動の確認までと指定したため、FULL 後の保持は未検証である。構成の正本は [環境構成](environment.md)、進捗の正本は [検証状況](validation.md) を参照する。
+node004 の運用用ディスクレイアウトへの切替と、通常の AUTO 再起動後の LVM 保持を確認した。node005・006 は後続の提供報告で VM のディスク対応を照合し、BCM 登録まで完了。初回起動・ディスク内容の確認と OS / LVM 展開が残る。ユーザーは今回の OS-only FULL 再展開試験を省略し、通常再起動の確認までと指定したため、FULL 後の保持は未検証である。構成の正本は [環境構成](environment.md)、進捗の正本は [検証状況](validation.md) を参照する。
 
 ## 前提・権限・証跡
 
@@ -257,10 +257,73 @@ env -u PYTHONPATH cm-kubernetes-setup --list-versions
 
 証跡: `input/80-preinstall/license-{check,info}.json`、`cm-setup-version.json`、`kubernetes-setup-help.json`、`kubernetes-available-versions.json`、`kubernetes-setup-help-cleanenv.json`、`kubernetes-versions-cleanenv.json`。実装調査は当該ファイルの読取り結果に基づく。
 
+## 6. worker2・3 の提供報告を照合して BCM に登録する
+
+2026-10-14（JST）、ユーザーから別管理チャットでの読み取り照会結果を受領した。報告上の実行者は server-config 側、実行場所は物理ホスト。正確な照会時刻・libvirt 版・各終了コード・コマンドの原出力は未共有。Codex がこの BCM から物理ホストへ接続して取得した結果ではない。
+
+報告された実行は各 VM の `domstate`、`dominfo`、`domiflist --inactive`、`domblklist --inactive --details`、`dumpxml --inactive` と各ディスクの `domblkinfo`。設定変更・電源操作なし。CPU / メモリ・NIC・ディスク用途と target・容量・UEFI/PXE 順序は [環境構成の提供報告](environment.md#2026-10-14-worker23-の照合と-bcm-登録) に集約した。OS ディスクの新規作成・PXE 確認と、後日の追加ディスク作成記録も報告されたが、その後の全使用履歴と現在保存すべきデータは未確認。小さい qcow2 割当量を消去許可や内容が空である証拠にはしない。
+
+### 6.1 変更前確認と XML の準備
+
+Codex は既存の導入前準備の依頼範囲で、BCM ヘッドの root 権限を使い、01:22:24～01:23:45 に次を実行した。
+
+1. README・作業方針・環境構成・検証状況・VM 一覧・ワーカー手順・既存補助スクリプトを cat / sed で確認。開始時の git status は変更なし。
+2. BCM の device list、default カテゴリの initialize / finalize、node005・006 の hostname / MAC / disksetup / datanode / installmode / nextinstallmode / 消去予約 / フック / interfaces、installerinteractions を取得した。両台は MAC 未登録・初期 IP・DOWN / unassigned、消去予約とフックは空、保留要求なし。
+3. ユーザー報告の要約を `input/80-preinstall/workers56-user-report.json` に保存した。実物理ホスト名・バックエンド絶対パスは公開文書へ転記しない。
+4. 検証済み node004 の初回用・運用用 XML を、照合済みの vda / vdb 対応を維持して node005・006 用に新規作成した。保存先は `input/70-worker-lvm/node005-initial.xml`、`node005-os-only.xml`、`node006-initial.xml`、`node006-os-only.xml`。すべて排他的作成、0600。既存ファイルの上書きはしていない。
+5. 下記の XSD / node-installer 検証を 4 ファイルそれぞれに実行し、計 8 件すべて終了 0。Python ElementTree で初回用は vda + vdb、VG / seed は所定名・4M、運用用は vda のみ、OS 定義が一致することを照合した。実ディスクの初期化を伴わない構造検証である。
+
+```bash
+# <XML> は上記の実際の保存先に置き換えて実行した
+xmllint --noout --schema /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd <XML>
+/cm/node-installer/scripts/disks -s /cm/local/apps/cmd/etc/htdocs/xsd/disks.xsd -x <XML> validate nodetect
+```
+
+### 6.2 ノード固有設定を保存する
+
+`input/80-preinstall/register-workers56.py` を作成・py_compile で構文確認後、node005 → node006 の順に実行した。以下は node005 の実行内容。node006 は名前・XML パス・IP・MAC を [確定した対応](environment.md#2026-10-14-worker23-の照合と-bcm-登録) に置換した。
+
+```text
+device use node005
+set disksetup /root/k8s/input/70-worker-lvm/node005-initial.xml
+set datanode yes
+set installmode AUTO
+set nextinstallmode FULL
+validate
+get disksetup
+get datanode
+get installmode
+get nextinstallmode
+```
+
+各ノードで MAC 未登録、nextinstallmode・消去予約・フックが空であることを改めて get / assertion で検査した。cmsh の検証呼出しは未 commit で終了し、stderr の `All good` と未保存警告を確認した。この段階では DB 保存済みと扱わず、同じ set を再実行して commit。終了 0・stderr なしを確認し、DB の disksetup を ElementTree で入力 XML と比較、datanode / installmode / nextinstallmode も get で照合した。
+
+その後、IP を保存・再読してから、最後に MAC を保存・再読した。
+
+```bash
+cmsh -c 'device; interfaces node005; use BOOTIF; set ip 172.30.65.22; commit'
+cmsh -c 'device; interfaces node005; use BOOTIF; get ip; get network'
+cmsh -c 'device use node005; set mac 52:54:00:65:00:06; commit'
+cmsh -c 'device use node005; get mac; get blockdevicesclearedonnextboot'
+cmsh -c 'device list; device installerinteractions'
+```
+
+両台とも保存・再読は成功。01:23:45 の最終一覧では node005・006 は予定 IP / MAC の DOWN で unassigned が解消、node001～004 は UP、installer interaction はなし。初回 FULL を確認なしで進めない `datanode=yes` を保持した。共有 default カテゴリ・node001～004 の設定、VM 電源・NIC・ディスク実体は変更していない。OS / LVM の作成とゲストへの IP 反映は未確認。
+
+証跡は `input/80-preinstall/workers56-before-*.json`、`node005-before-register.json`、`node006-before-register.json`、各 `node00[56]-{initial,os-only}-{xsd,nodetect}.json`、`node00[56]-guard-*.json`、`node00[56]-settings-*.json`、`node00[56]-ip-*.json`、`node00[56]-mac-*.json`、`node00[56]-final-wipe.json`、`workers56-final-devices.json`。結果 JSON は 0600、input 全体は Git 管理外。今回の設定保存ではコマンド失敗・再試行はなかった。
+
+### 6.3 次の電源操作（未実行）
+
+物理ホスト側にはまず **tk8s-worker2 だけの電源 ON** と状態報告を依頼する。tk8s-worker3 は停止を維持し、NIC・ディスク・SSH・ネットワーク設定を変更しない。FULL 確認画面が出ても承認せず、その状態を報告する。こちらで対象識別・インストーラーとディスク内容を確認してから初回展開へ進む。電源 ON の依頼文は利用者へ提示しただけで、別チャットへの直接送信や電源操作を実施した証跡ではない。
+
+初回展開成功後には、それぞれ保存済みの運用用 XML に切り替えて通常再起動での保持を確認する。node004 の FULL 保持試験を省略したユーザー指定は維持する。Kubernetes インストールは引き続き今回の範囲外。
+
+文書は既存の準備手順・環境構成・VM 一覧・進捗・ワーカー手順を更新し、新しい文書は作成しない。差分と実行結果を照合し、相対リンク・コードフェンス、ステージ済み差分、input の非追跡・除外、認証情報・実接続情報の不掲載を確認して汎用名義でコミットする。公開・push は行わない。
+
 ## 今回の限界と次工程
 
 - node001～004 の OS / 通信と node004 の通常再起動後の LVM 保持を確認した範囲である。6 台すべての Kubernetes 導入前準備完了とは扱わない。
-- node005・006 のディスク用途確認、BCM 設定、初回展開、OS / VG / LV 確認が残る。電源操作だけではディスク構成を確定できない。
+- node005・006 のディスク用途・target は提供報告で照合し、BCM 設定保存まで完了。電源 ON、現在の内容確認、初回展開、OS / VG / LV 確認と運用用切替が残る。
 - node004 の OS-only FULL 再展開後の保持は今回省略した。実施する場合は影響と保全方法を別途確認する。
 - swap の無効化、Kubernetes の役割・採用版・Pod / Service CIDR・API endpoint・CNI の確定と導入は後続工程。今回 Kubernetes や etcd の初期化は行っていない。
 - 初回の DNS 失敗と未設定 shorewall6 は上記の観測結果を記録し、変更しなかった。DNS が再び失敗する場合は head の外部 DNS 到達性から切り分ける。

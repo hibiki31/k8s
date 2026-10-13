@@ -396,3 +396,28 @@ Codex が同日 00:54 以降に再確認・設定変更を実施した。手順�
 swap は導入前の 16 GiB 有効状態を維持する。BCM setup に swap 無効化・モジュール・sysctl・containerd 設定工程があることを実装で確認したが、今回は実行していない。構築後と再起動後の確認が必要。Kubernetes の版・CNI・API エンドポイント・Pod / Service / Multus の CIDR は未確定で、クラスタ設定は未適用。
 
 OS-only FULL 再展開試験はユーザー指示で今回省略した。AUTO の合格を FULL 時の保持実証として扱わない。広範な OS バックアップも未実行。
+
+## 2026-10-14: worker2・3 の照合と BCM 登録
+
+ユーザーが server-config 側で同日実施した読み取り照会の要約を提供。原出力・正確な時刻・libvirt 版・各終了コードは未共有。物理ホストの設定・電源は変更していないとの報告。Codex は BCM で 01:22～01:23 JST に設定を保存・再読した。[手順と証跡](kubernetes-preparation.md#6-worker23-の提供報告を照合して-bcm-に登録する) を参照。
+
+| 項目 | worker2 / node005 | worker3 / node006 | 根拠 |
+|---|---|---|---|
+| VM の電源・リソース | shut off、8 vCPU / 32 GiB | 同左 | 提供報告。メモリは設定容量 |
+| 内部 / Multus NIC | 既存の計画どおり各 1 本 | 同左 | 永続定義、両方 virtio |
+| OS / データ target | vda / vdb | vda / vdb | 作成記録・ファイル用途・serial と照合したとの報告 |
+| ディスク容量 | 各 256 GiB | 各 256 GiB | qcow2 / virtio、各 Capacity 274877906944 bytes |
+| ディスク割当量 | 各 Allocation / Physical 200704 bytes | 同左 | 内容が空であることの証明にはしない |
+| BCM 内部 IP | 172.30.65.22 | 172.30.65.23 | BOOTIF / internalnet に保存・再読済み |
+| BCM 内部 MAC | 52:54:00:65:00:06 | 52:54:00:65:00:07 | 保存・再読済み |
+| BCM 初回レイアウト | vda OS + vdb1 PV、vg_topolvm / PE 4M / bcm_seed 4M | 同左 | node 固有 XML を保存・照合、ディスク実体は未作成 |
+| BCM モード | datanode yes、AUTO、next FULL | 同左 | 保存・再読済み。明示消去予約・フックは空 |
+| BCM 状態 | DOWN、登録済み | 同左 | 01:23:45 の直接照会 |
+
+両 VM は永続定義あり、自動起動無効、managed save なし。永続 XML は OVMF UEFI、Secure Boot / enrolled-keys 無効、内部 NIC が boot order 1、OS vda が 2。Multus NIC は ROM 無効で boot order なし、vdb も boot order なし。NVRAM 内の BootOrder と実際の起動動作は未確認。
+
+使用履歴は OS ディスク新規作成と未導入状態での PXE 確認（9 月 15 日）、データディスク新規追加と guest CPU を動かさない paused 検査（9 月 22 日）まで提供された。その後の全履歴・現在保存すべきデータは未確認。ゲスト内のパーティション・PV / VG も未確認。
+
+共有格納先は ext4、使用率 7%、利用可能容量 2799515435008 bytes（約 2.55 TiB）との提供値。2 台専用の予約ではない。実物理ホスト名、バックエンド絶対パス・デバイス名、serial の実値は公開文書へ転載しない。
+
+運用用 OS-only XML も各台分を準備・構造検証済みだが、初回展開後に適用する候補であり、現在の BCM 保存値は初回用。起動・FULL 承認・ディスク初期化は未実行。node004 の設定と LVM は今回変更していない。
