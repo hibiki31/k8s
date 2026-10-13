@@ -40,6 +40,7 @@ Kubernetes・Multus・TopoLVM 本体の構築手順書は未作成です。今�
 
 | ドキュメント・解説 | 内容 |
 |---|---|
+| [各ノードの状態確認](docs/node-status.md) | BCM・SSH・OS サービスの読み取り専用確認手順と実施記録 |
 | [BCM Base View への接続手順](docs/bcm-base-view.md) | 既存のポート転送・ブラウザー Proxy からの接続、ログイン方法、サーバー応答と 6 枚の管理画面の確認記録 |
 | [BCM / Kubernetes バージョン対応](docs/bcm-kubernetes-versions.md) | Ubuntu 24.04 を前提とした BCM 11.34 / 11.33 の導入候補・認定表示と確認方法 |
 | [Kubernetes の CIDRNotAvailable / NotReady 切り分け](docs/kubernetes-cidr-troubleshooting.md) | Node CIDR 枯渇・設定不整合と、CNI・kubelet・API 到達性を分離する読み取り専用の障害調査手順 |

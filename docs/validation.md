@@ -1,6 +1,6 @@
 # 検証状況
 
-最終整理日: 2026-09-25
+最終整理日: 2026-10-14
 
 初期資料 `docs/vm-list.md` の準備・検証状況、`input/` に保存された証跡、および 2026-09-22 の利用者提供ネットワーク構成をもとに整理しています。同日夜には BCM ヘッドノード上で読み取り専用の実機調査を行いました。証跡は `input/40-bcm-pxe/2026-09-22-headnode-check.txt`。その後、利用者がライセンスを登録し、23:26 JST に登録後の状態を確認しました（証跡: `input/50-bcm-license/2026-09-22-post-registration-check.txt`）。9 月 23 日には利用者提供の PXE 画像 4 枚を確認し、ヘッド上で node001 の UP と同期完了を再照会しました。最初の IP 指定 SSH は未登録ホスト鍵の検証で停止しましたが、00:17 JST にホスト名 `node001` で接続し、ノード内コマンドと外部 HTTPS を確認しました。エージェントによる設定変更・VM 起動・PXE 再展開は行っていません。[初回展開記録](bcm-pxe-provisioning.md#2026-09-23-node001-の初回-pxeos-展開記録) を参照。
 
@@ -27,6 +27,22 @@
 追加復帰対象 CP で API コンテナが crictl に表示されなくなったとのユーザー報告があった。停止済みを含めた一覧・CRI endpoint・manifest・kubelet の状態、直前の操作は未共有。[API コンテナ不表示の切り分け](kubernetes-cidr-troubleshooting.md#2026-09-25-対象-cp-の-api-コンテナが-crictl-に表示されない) を追加し、再作成側のログ確認を優先する。追加回答で `update_apiserver` と再起動を実施したとの報告を受けた。引数・順序・再起動対象・終了結果は未共有で、API の再作成失敗を優先確認する。etcd 再追加の実行と API 修復成否は未確認。
 
 最新報告では、先に API コンテナを調査した CP は正常復旧した（ユーザー報告、最終操作・原出力未共有）。続いて別 CP の `/var/lib/kubelet/` が空で、kubelet 起動時に `config.yaml` の生成待ちとなるとの報告を受けた。対象ノード用設定の再生成とクライアント認証情報の確認を [条件付き修復手順](kubernetes-cidr-troubleshooting.md#2026-09-25-別-cp-の-kubelet-が-configyaml-の生成待ちになる) に整理した。Codex による現地操作は未実施で、新対象の復旧・全 CP Ready・etcd 3 メンバーの正常化は未確認。
+
+## 2026-10-14 の各ノード実機確認
+
+00:48～00:49 JST、Codex が BCM と SSH で再照会した最新の観測。後続の従来表は過去時点の記録であり、現在の稼働判定はこちらを優先する。詳細は [実行手順・証跡](node-status.md)。
+
+| 対象（VM / BCM 名） | BCM 状態 | SSH・OS 確認 | 注意点 |
+|---|---|---|---|
+| tk8s-bcm / ヘッド | UP | ローカル照会、cmd active | shorewall6.service が failed |
+| tk8s-cp1 / node001 | UP | SSH 成功、失敗ユニット 0 | kubelet / containerd 標準 unit なし |
+| tk8s-cp2 / node002 | UP | SSH 成功、失敗ユニット 0 | 同上 |
+| tk8s-cp3 / node003 | UP | イメージ公開鍵照合後 SSH 成功、失敗ユニット 0 | 同上 |
+| tk8s-worker1 / node004 | UP | イメージ公開鍵照合後 SSH 成功、失敗ユニット 0 | 同上 |
+| tk8s-worker2 / node005 | DOWN / unassigned | SSH は No route to host | BCM で MAC 未登録、VM 電源未確認 |
+| tk8s-worker3 / node006 | DOWN / unassigned | SSH は No route to host | 同上 |
+
+Kubernetes の Ready / API / etcd は今回未確認。9 月 25 日にユーザーが報告した障害環境との同一性は未確認であり、その復旧成否を今回の結果から判定しない。構成の観測値は [環境構成](environment.md#2026-10-14-の状態確認) に記載。要件全体の合格状況は変更しない。
 
 ## 現在の状況
 

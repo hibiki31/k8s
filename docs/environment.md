@@ -368,3 +368,11 @@ lvmd の `spare-gb: 10` は未適用。初回作成と通常 OS 起動までの�
 - 適用するアカウント・ホスト: 初期資料には記載なし。
 
 ネットワーク構成についての公開確認は、認証情報の公開許可を含みません。
+
+## 2026-10-14 の状態確認
+
+Codex が 00:48～00:49 JST に読み取り専用で照会。手順・一次資料は [各ノードの状態確認](node-status.md)、稼働判定は [検証状況](validation.md#2026-10-14-の各ノード実機確認) に集約する。構成変更は行っていない。
+
+node001～004 は Ubuntu 24.04.4 LTS / 6.8.0-106-generic。node001～003 はメモリ約 15 GiB 中 1.2 GiB 使用、ルート 112 GiB 中 13 GiB 使用（12%）。node004 はメモリ約 31 GiB 中 1.4 GiB 使用、ルート 240 GiB 中 16 GiB 使用（7%）。4 台とも swap パーティション 16 GiB が有効・使用量 0、kubelet.service / containerd.service は not-found、標準 kubelet 設定なし、kubectl は PATH 上になかった。標準外の配置・導入履歴は未調査。
+
+ヘッドは Cluster Manager 11.0 / CMDaemon 3.1 / Build Index 165270。node005・006 は BCM の初期割り当てが残り、MAC 未登録。既存の未展開記録と整合するが、ゲスト内部や VM 電源は未確認。
