@@ -421,3 +421,21 @@ OS-only FULL 再展開試験はユーザー指示で今回省略した。AUTO �
 共有格納先は ext4、使用率 7%、利用可能容量 2799515435008 bytes（約 2.55 TiB）との提供値。2 台専用の予約ではない。実物理ホスト名、バックエンド絶対パス・デバイス名、serial の実値は公開文書へ転載しない。
 
 運用用 OS-only XML も各台分を準備・構造検証済みだが、初回展開後に適用する候補であり、現在の BCM 保存値は初回用。起動・FULL 承認・ディスク初期化は未実行。node004 の設定と LVM は今回変更していない。
+
+## 2026-10-14: node005 の初回展開と通常再起動
+
+Codex が 01:32～01:38 JST に直接確認・展開した。[実行手順](kubernetes-preparation.md#7-node005-の初回展開と通常再起動試験) を参照。直前の登録時点の状態は上記に保持する。
+
+| 項目 | 最新の実測 |
+|---|---|
+| BCM | node005 UP、保留要求なし。node001～004 も UP、node006 DOWN |
+| OS | kernel 6.8.0-106-generic、8 CPU、メモリ約 31 GiB を OS で認識 |
+| ルート | vda3 / XFS。vda1 EFI 100 MiB、vda2 swap 16 GiB |
+| ネットワーク | 172.30.65.22/24、default via 172.30.65.1。Multus 用 NIC は DOWN・IP なし |
+| 基本動作 | cmd active、失敗 unit 0、NTP 同期 yes、DNS 解決成功、直接 IPv4 HTTPS 200 |
+| TopoLVM 用領域 | vdb1 / vg_topolvm、PV 1、PE 4 MiB、seed 4 MiB のみ・active |
+| VG 容量 / 空き | 274873712640 / 274869518336 bytes |
+| BCM 運用設定 | OS-only vda、datanode yes、AUTO、nextinstallmode・消去予約なし |
+| 保持確認 | AUTO → SYNC 再起動後に識別子と試験 LV 全体のハッシュ一致。試験 LV は削除済み |
+
+swap は 16 GiB 有効・使用 0 の導入前状態。Kubernetes・Multus・TopoLVM 本体は導入していない。OS-only FULL 再展開での保持は未検証。node006 の初回展開と通常再起動確認が残る。

@@ -2,7 +2,7 @@
 
 実施日: 2026-10-14（JST）。実行者は、明記したユーザー操作・報告を除き Codex。対象は BCM ヘッドと node001～node006。ユーザーの訂正により、今回の範囲は **Kubernetes のインストール手前まで**とし、Kubernetes・etcd・CNI の導入は実行しない。
 
-node004 の運用用ディスクレイアウトへの切替と、通常の AUTO 再起動後の LVM 保持を確認した。node005・006 は後続の提供報告で VM のディスク対応を照合し、BCM 登録まで完了。初回起動・ディスク内容の確認と OS / LVM 展開が残る。ユーザーは今回の OS-only FULL 再展開試験を省略し、通常再起動の確認までと指定したため、FULL 後の保持は未検証である。構成の正本は [環境構成](environment.md)、進捗の正本は [検証状況](validation.md) を参照する。
+node004 の運用用ディスクレイアウトへの切替と、通常の AUTO 再起動後の LVM 保持を確認した。node005 は初回展開・運用用切替・通常再起動の保持試験まで完了。node006 は BCM 登録済みで初回起動・内容確認・OS / LVM 展開が残る。ユーザーは今回の OS-only FULL 再展開試験を省略し、通常再起動の確認までと指定したため、FULL 後の保持は未検証である。構成の正本は [環境構成](environment.md)、進捗の正本は [検証状況](validation.md) を参照する。
 
 ## 前提・権限・証跡
 
@@ -320,10 +320,69 @@ cmsh -c 'device list; device installerinteractions'
 
 文書は既存の準備手順・環境構成・VM 一覧・進捗・ワーカー手順を更新し、新しい文書は作成しない。差分と実行結果を照合し、相対リンク・コードフェンス、ステージ済み差分、input の非追跡・除外、認証情報・実接続情報の不掲載を確認して汎用名義でコミットする。公開・push は行わない。
 
+## 7. node005 の初回展開と通常再起動試験
+
+実施日: 2026-10-14 JST。BCM 11.0 / CMDaemon 3.1（build 165270）、既存 default-image。物理ホスト側の実行はユーザー提供報告、以下の BCM / SSH 操作は Codex、BCM ヘッド root 権限で実施した。README と本書・ワーカー手順・既存補助スクリプトを確認し、開始時の Git 差分はなし。
+
+### 7.1 起動報告と初期化前の確認
+
+ユーザーから worker2 のみ running（8 vCPU / 32 GiB）、worker3 は shut off、設定変更・FULL 承認・コンソール入力なしとの報告を受領。別管理リポジトリの記録コミットは `251419f` との申告であり、こちらではその内容を検証していない。電源操作の正確な時刻・実コマンドは未共有。
+
+01:32:30 に `cmsh -c 'device list; device installerinteractions; device use node005; get datanode; get nextinstallmode'` を実行。node005 は INSTALLING、01:32:04 発生の FULL 要求 pending、datanode yes / next FULL。node001～004 は UP、node006 は DOWN。
+
+01:32:44 にインストーラーの配布元 `/cm/node-installer/etc/ssh/ssh_host_ed25519_key.pub` の公開鍵を一時 known_hosts に登録し、StrictHostKeyChecking=yes で node005 に接続。通常 OS 用とは配布元を区別し、既存 SSH 設定は変更していない。以下を読み取り実行した。
+
+```bash
+hostname
+findmnt -no SOURCE,FSTYPE /
+ip -br link
+lsblk -b -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS,SERIAL
+for d in /dev/vda /dev/vdb; do
+  wipefs --no-act "$d"
+  blkid -p "$d"; echo "blkid_rc=$?"
+done
+pvs
+vgs
+lvs
+```
+
+NFS の node-installer 起動、予定の内部 / Multus MAC、vda / vdb 各 256 GiB、データディスク serial の提供値一致を確認。パーティションなし、wipefs 出力なし、blkid は両方終了 2、PV / VG / LV なし。既知シグネチャが検出されなかった結果であり、全セクターのゼロ検査ではない。ディスク用途の照合、初回用設定、既存構成非検出を確認して、既存の展開依頼の範囲で次へ進めた。
+
+### 7.2 初回 FULL と OS 確認
+
+01:32:59 に node005 の要求だけを承認した。対象 vda / vdb を初期化して OS と LVM を作成する操作である。
+
+```bash
+cmsh -c 'device installerinteractions -w -n node005 --confirm'
+cmsh -c 'device status node005; device synclog node005'
+```
+
+承認は終了 0 / confirmed。01:33:11 は mounting disks、synclog 未生成。01:34:09 のログでは FULL 同期が 01:33:18 に開始し、01:34:04 に Rsync completed。ログが大きいためツール表示は省略されたが、原出力は JSON に保存した。01:34:55 に UP / 保留要求なしを確認した。
+
+01:34:56 に通常 OS 配布元の公開鍵を使用して SSH 接続し、`node005-health.sh` を実行。最初にルートが `/dev/vda3` であることを assertion し、インストーラーの SSH 応答と区別した。hostname / uname / nproc / free / ip / findmnt / lsblk / swapon、systemctl の failed / cmd、timedatectl、pvs / vgs / lvs、getent と Proxy を使わない IPv4 curl を実行。すべて終了 0。結果は [環境構成](environment.md#2026-10-14-node005-の初回展開と通常再起動) に集約する。
+
+### 7.3 運用用切替と通常再起動
+
+`input/80-preinstall/node005-auto-prepare.py` を作成して実行。既存の構造検証済み `node005-os-only.xml` を cmsh validate し、01:35:19 に commit。DB 再読の XML とファイルを ElementTree で比較した。datanode yes / AUTO、nextinstallmode・消去予約・initialize / finalize 空を個別取得・assertion した。
+
+01:35:25 に OS 起動と既存 LV が seed のみであることを検査後、[node004 と同じ試験](#32-新しい試験-lv-を作る) として `bcm_persist_test` 16 MiB を新規作成し、全長に乱数を記録。`lvm-snapshot.sh` で UUID・容量・配置・試験 LV 全体の SHA-256 を保存した。01:35:28 に `systemctl reboot` を実行、終了 0。FULL 再展開試験ではない。
+
+証跡・実行スクリプトは Git 管理外 `input/80-preinstall/node005-{boot-status,installer-disks,full-confirm,full-progress1,full-progress2,full-status3,initial-health,os-only-validate,os-only-commit,os-only-readback,auto-guard-*,test-create,before-auto,auto-reboot}.json`、`node005-health.sh`、`node005-auto-prepare.py`。実ホスト名・serial・UUID・チェックサムは公開文書へ転載しない。
+
+### 7.4 保持判定と後片付け
+
+01:36:15 の照会では PXE 起動中で旧 FULL ログが残っていた。01:37:11 に今回の SYNC 開始（01:36:58）を確認し、01:38:09 に UP と Rsync completed（01:37:15）を確認した。`node005-auto-finish.py` は通常 OS のルートを assertion 後に LVM 記録を再取得し、起動前との完全一致を検査。PV / VG / seed と試験 LV の UUID・容量・配置、VG 空き、試験 LV 全体の SHA-256 はすべて一致した。手動 activate は不要だった。
+
+01:38:23 に今回の試験 LV のみ `lvremove -y /dev/vg_topolvm/bcm_persist_test` で削除し、同じ health スクリプトを再実行して終了 0。01:38:25 の BCM 再読で node001～005 UP、node006 DOWN、保留要求なし、node005 OS-only / datanode yes / AUTO / next と消去予約空を確認した。
+
+追加証跡: `input/80-preinstall/node005-auto-progress{1,2,3}.json`、`node005-after-auto.json`、`node005-test-cleanup.json`、`node005-final-health.json`、`node005-final-state.json`、`node005-auto-finish.py`。全実行は成功し、シグネチャ非検出を示す blkid の終了 2 を除きコマンド失敗なし。次は別管理側へ worker3 のみ電源 ON と状態報告を依頼し、FULL 確認は未承認に維持する。依頼文の提示は実際の送信・起動を意味しない。
+
+既存の手順・構成・進捗・ワーカー文書を更新。Python による編集後、Markdown リンク・コードフェンス、Git 差分・ステージ済み全差分、input の非追跡・除外と公開情報を確認して汎用名義でコミットする。公開不可の識別情報・秘密情報・原本は追加しない。push は行わない。
+
 ## 今回の限界と次工程
 
-- node001～004 の OS / 通信と node004 の通常再起動後の LVM 保持を確認した範囲である。6 台すべての Kubernetes 導入前準備完了とは扱わない。
-- node005・006 のディスク用途・target は提供報告で照合し、BCM 設定保存まで完了。電源 ON、現在の内容確認、初回展開、OS / VG / LV 確認と運用用切替が残る。
+- node001～005 の OS / 通信と node004・005 の通常再起動後の LVM 保持を確認した範囲である。6 台すべての Kubernetes 導入前準備完了とは扱わない。
+- node006 は BCM 設定保存まで完了。電源 ON、現在の内容確認、初回展開、OS / VG / LV 確認と運用用切替・通常再起動試験が残る。
 - node004 の OS-only FULL 再展開後の保持は今回省略した。実施する場合は影響と保全方法を別途確認する。
 - swap の無効化、Kubernetes の役割・採用版・Pod / Service CIDR・API endpoint・CNI の確定と導入は後続工程。今回 Kubernetes や etcd の初期化は行っていない。
 - 初回の DNS 失敗と未設定 shorewall6 は上記の観測結果を記録し、変更しなかった。DNS が再び失敗する場合は head の外部 DNS 到達性から切り分ける。
