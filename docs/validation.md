@@ -91,7 +91,7 @@ Kubernetes の Ready / API / etcd は今回未確認。9 月 25 日にユーザ�
 | 内部ネットワークから外部へのルーティング・NAT | ヘッド設定・全 6 ノードの外部疎通を確認 | node004 でもヘッド経由の経路、外部 DNS、docs.nvidia.com への IPv4 HTTPS HTTP 200 を確認。ヘッド・cp1～3 は以前の結果を引き継ぐ。node005・006 は 10 月 14 日に同様に確認 |
 | R-01: BCM による 6 台への OS 展開 | 6 / 6 台で初回展開・起動後の基本確認完了 | node004 で FULL 同期完了・UP・SSH・OS / LVM・失敗サービス 0・外部 HTTPS を確認。node001～003 は前回の成功結果を引き継ぐ。node005・006 も展開・基本確認完了。[cp1～3](bcm-pxe-provisioning.md#2026-09-23-node001003-の-bcm-からの一括確認)・[node004](worker-storage.md#2026-09-23-node004-の初回展開後確認) |
 | R-02: Kubernetes クラスタ構築・基本動作 | 本検証環境は未構築・今回は導入前まで | 10 月 14 日の照会で overlay・標準 kubelet 設定等の不存在を確認。別環境か未確定の 9 月 25 日の障害報告は [切り分け記録](kubernetes-cidr-troubleshooting.md) に保持し、本検証の構築済み証跡としない。導入後・再起動後の swap 無効も未検証 |
-| R-03: Multus 導入・動作 | 未実施 | 初期資料で今後実施と記載 |
+| R-03: Multus 導入・動作 | 設計案作成・実機未実施 | 2026-10-14 に [macvlan + Whereabouts の設計・手順・試験条件](multus-macvlan-whereabouts.md) を整理。採用版・NIC・IP 範囲の確定と導入・疎通は未実施 |
 | ワーカーの LVM 初期化 | node004～006 は運用用切替・AUTO 保持試験合格 | seed 4 MiB のみ、空き容量回復。OS-only FULL は今回省略。PVC 動作は未確認。[最新記録](kubernetes-preparation.md) |
 | R-04: TopoLVM 導入・動的割り当て | 未実施 | 初期資料で今後実施と記載 |
 | R-05: etcd バックアップ・リストア | 計画作成・未実施 | [専用 namespace による復元判定手順](etcd-backup-restore.md) を作成。現環境は Kubernetes 未構築で、別環境の版・構成・BCM multi-member 復旧順も未確認。snapshot 取得・差分作成・restore は実行していない |
