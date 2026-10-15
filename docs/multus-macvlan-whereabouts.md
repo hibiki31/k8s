@@ -2,6 +2,86 @@
 
 作成日: 2026-10-14。ユーザーの「weherbord」は Whereabouts を指すものとして整理した。今回は資料調査・設計のみで、クラスタ・VM の操作は行っていない。以下の導入コマンドと YAML はすべて未実行である。
 
+## bond3 用の最小導入手順（2026-10-15 更新）
+
+利用者指定の親 `bond3` と、最新のチャットで指定された `192.168.0.0/24` を使用する。以下は今回作成した適用用設定であり、実環境への適用は未実施。過去の例示値を使う手順より本節を優先する。仕組みと詳しい設計条件は後続節に残す。
+
+### 適用するファイル
+
+| ファイル | 内容 |
+|---|---|
+| [addons/kustomization.yaml](examples/multus-bond3/addons/kustomization.yaml) | 公式 Multus v4.3.1（thick）と Whereabouts v0.9.4 の YAML を参照し、コンテナと initContainer のイメージ版を固定 |
+| [network.yaml](examples/multus-bond3/network.yaml) | 試験 namespace と bond3 用 macvlan / Whereabouts NAD |
+| [test-pods.yaml](examples/multus-bond3/test-pods.yaml) | label を付けたワーカーごとに疎通試験 Pod を配置する DaemonSet |
+
+Whereabouts は通常の Kubernetes backend を使用し、Fast IPAM は有効にしない。IP は `.1`～`.254` の合計 254 個を全ノードで共有する。`.0` はネットワーク、`.255` はブロードキャスト。固定 IP・DHCP の既存利用があれば適用前に `ipam.exclude`（CIDR の配列）へ追加し、利用可能数を減らす。gateway / default route は設定せず、MTU は親から継承する。
+
+### 1. 前提を確認する
+
+実行場所は管理端末（リポジトリルート）、権限はクラスタ管理者。基本 CNI が導入済みで Node Ready、通常の Pod 間・DNS 通信が正常であること。既存 Multus / Whereabouts / Operator の二重導入はしない。今回の版と実クラスタの Kubernetes / 基本 CNI との互換性は未検証。管理端末には kubectl（Kustomize 対応）と公式 GitHub への HTTPS 接続、各ノードにはイメージレジストリへの接続が必要。
+
+各対象ワーカーの OS で次を確認する。これは bond を作成する手順ではなく、既存の bond3 を利用する手順である。bond の slave・mode は未共有であり推測しない。802.3ad の場合は対向 LACP の整合も確認する。
+
+```bash
+ip -d link show bond3
+cat /proc/net/bonding/bond3
+test -x /opt/cni/bin/macvlan
+```
+
+期待結果: bond3 と有効な slave が UP、全対象ノードで同じ L2 に接続、複数 MAC の送受信が可能。macvlan バイナリが存在すること。なければ既存基本 CNI と整合する版の CNI plugins を先に配置する。macvlan は Multus / Whereabouts の YAML ではインストールされない。
+
+公式 YAML の前提パスは CNI 設定 `/etc/cni/net.d`、バイナリ `/opt/cni/bin`。ランタイムの実設定が異なる場合はそのまま適用せず hostPath / mountPath / 設定パスを合わせる。Multus は既存 CNI 設定を自動検出するため、先頭の設定が意図する基本 CNI であることを確認する。元の設定は管理者限定の場所に保管する。
+
+### 2. Multus と Whereabouts を導入する
+
+[Multus 公式 Quickstart](https://k8snetworkplumbingwg.github.io/multus-cni/docs/quickstart.html) と [Whereabouts v0.9.4 の Installation](https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/README.md#installation) に従い、公式の DaemonSet / CRD / RBAC と Whereabouts reconciler を使用する。導入 DaemonSet は公式どおり CP を含むノードに配置される。bond3 を使うのは annotation を持つ Pod だけで、CP に bond3 を作成する必要はない。公式 quickstart は privileged / hostPath を使ってホストの CNI 設定を更新する。
+
+次は未実行の導入コマンド。生成した YAML は Git 管理外の input に置き、適用前に image が `v4.3.1-thick` / `v0.9.4` に固定されていることと配置・パスを確認する。タグは固定しているが digest 固定ではない。
+
+```bash
+mkdir -p input/90-multus
+kubectl kustomize docs/examples/multus-bond3/addons > input/90-multus/addons.yaml
+# 生成が終了 0 で、上記の版・パス・配置を確認した後に実行
+kubectl apply -f input/90-multus/addons.yaml
+kubectl wait --for=condition=Established --timeout=120s \
+  crd/network-attachment-definitions.k8s.cni.cncf.io \
+  crd/ippools.whereabouts.cni.cncf.io \
+  crd/overlappingrangeipreservations.whereabouts.cni.cncf.io
+kubectl -n kube-system rollout status ds/kube-multus-ds --timeout=180s
+kubectl -n kube-system rollout status ds/whereabouts --timeout=180s
+kubectl -n kube-system rollout status deployment/whereabouts-reconciler --timeout=180s
+```
+
+いずれかが失敗したら次へ進まず events / logs を確認する。正常完了後、対象ワーカーの `/opt/cni/bin/whereabouts` と通常 Pod の通信が維持されていることを確認する。
+
+### 3. 追加ネットワークと試験 Pod を適用する
+
+`<WORKER_A>` / `<WORKER_B>` を bond3 確認済みの異なる Kubernetes Node 名へ置換する。追加のワーカーも同様に label を付ける。これらは公開用プレースホルダー。
+
+```bash
+kubectl label nodes <WORKER_A> <WORKER_B> secondary-network=bond3
+kubectl apply -f docs/examples/multus-bond3/network.yaml
+kubectl apply -f docs/examples/multus-bond3/test-pods.yaml
+kubectl -n multus-test rollout status ds/bond3-test --timeout=180s
+kubectl -n multus-test get pods -l app=bond3-test -o wide
+```
+
+異なるワーカー上に少なくとも 2 Pod が Running / Ready であることを確認する。label 対象が 0 台の状態を試験成功としない。
+
+### 4. net1 の IP と疎通を確認する
+
+`<POD_A>` / `<POD_B>` は前段の実 Pod 名、`<POD_B_NET1_IP>` は Pod B の net1 の実 IP に置換する。
+
+```bash
+kubectl -n multus-test exec <POD_A> -- ip addr show net1
+kubectl -n multus-test exec <POD_B> -- ip addr show net1
+kubectl -n multus-test exec <POD_A> -- ip route
+kubectl -n multus-test exec <POD_A> -- ping -I net1 -c 3 <POD_B_NET1_IP>
+kubectl get ippools.whereabouts.cni.cncf.io -A
+```
+
+期待結果: net1 にそれぞれ異なる `.1`～`.254` の IP が付き、別ワーカー間で双方向に ping 成功。default route が元の eth0 側に残り、基本 CNI / DNS 通信が正常であること。同じノードの親 bond3 と net1 の直接疎通は macvlan の制約があるため合否に使わない。試験後は `kubectl delete -f docs/examples/multus-bond3/test-pods.yaml` で試験 Pod を削除し、IPPool の割当が解放されたことを確認する。NAD と導入コンポーネントは継続利用用に残す。
+
 ## 前提と推奨構成
 
 実環境の構成は [環境構成](environment.md)、台数・役割は [VM 一覧](vm-list.md)、現在の進捗は [検証状況](validation.md) を正本とする。既存記録の専用 L2 とワーカーの第 2 NIC を利用し、**Multus + macvlan（bridge モード）+ Whereabouts（Kubernetes backend）**を提案する。最初は VLAN タグ・ゲートウェイなしの IPv4 ワーカー間通信に限定する。
@@ -236,3 +316,19 @@ R-03 の判定・実行ログのリンクは [検証状況](validation.md) に�
 9. 公開情報チェックは 5 文書のステージ内容、ファイル名、コミット文言と公開用名義を対象とした。新規 IP・NIC・接続先・イメージは例示値またはプレースホルダー、既存のネットワーク名は公開許可済みの範囲。認証実値・個人情報・第三者原本の混入なし、追加で除去すべき値なし、公開情報の未解決事項なし。この記録も再ステージして差分を再確認する。
 
 コミットは既存の公開用名義 `Repository Maintainer <maintainer@example.invalid>` を明示してローカルに保存し、終了後に `git status --short` を確認する。push・初回公開・全履歴の公開監査は今回の対象外。コミット ID と残変更はチャットの完了報告に記載する。
+
+
+## 2026-10-15 の YAML 作成・確認記録
+
+実行者: Codex。実施時刻: 未記録。場所: リポジトリ作業端末。権限: 文書編集・Git と公開 Web 読取り。Git 2.43.0、Python 3.12.3、PyYAML 6.0.1。目的: 利用者指定の bond3 用に最小手順と適用ファイルを作成してコミットする。ユーザーから実環境での操作報告はなく、今回も SSH・クラスタ操作は行っていない。
+
+1. `git status --short --untracked-files=all` で開始時の変更なしを確認し、README、AGENTS、本書、環境・進捗・要件・出典を `cat` / `rg` で確認した。指定 CIDR の表記をチャットで確認し、最新指定の `192.168.0.0/24` に更新した（履歴からの旧値除去も依頼されたため、本記録は置換後の値を示す）。bond3 とこの範囲は今回利用者が指定してコミットを依頼した検証設定で、稼働中の実測情報としては扱わない。
+2. Web ツールで公式 Quickstart、両リリース一覧、タグ固定の導入 YAML（Kustomization に記載する全 5 URL）を読んだ。Multus のイメージは snapshot-thick、Whereabouts は latest だったため images でリリースタグへ置換する設計とした。Multus の公式 Packages で v4.3.1-thick を確認し、Whereabouts の Chart / values も参照した。
+3. Python urllib で GitHub API からリリースを取得しようとしたが DNS 解決に失敗した。権限付きの再試行も同じ理由で終了 1。`input/90-multus/` は作成したが原本のダウンロードはできなかった。Web ツールの読取り結果で公式 YAML の構成・名前・パスを確認した。一部の推測した CI ファイル URL と Whereabouts Packages は取得できず、根拠に使用していない。
+4. `command -v kubectl` / `command -v kustomize` はパスを返さず、作業端末には両コマンドがない。したがって Kustomize の実レンダリング、API dry-run、image pull、実機疎通は未実施。管理端末での生成・内容確認と導入後の確認を手順に明記した。
+5. シェル・Python で Kustomization、NAD と namespace、試験 DaemonSet を作成し、本書・README・環境・進捗・参考資料を更新した。公式原本のコピーはコミットせず、版を固定した公式 URL を参照する。追加の一般的な設計説明は前日の節に集約した。
+
+期待成果は適用用ファイルと最小手順の保存。証跡は今回のチャットのツール結果・確認済み公式 URL・Git 差分。残る確認は実機側の bond3 / CNI パス・対応版・予約 IP、イメージ取得、生成 YAML とクラスタでの動作である。
+
+6. Python / PyYAML で 3 YAML を解析し、NAD 内 JSON、254 アドレスの CIDR、namespace と NAD と Pod annotation の一致、配置 label、版固定、相対ファイルリンクとコードフェンスを検証して成功した。`git diff --check` はエラーなし。`git ls-files -- input` は出力なし、生成先は `.gitignore` の `/input/` により除外されることを確認した。
+7. 今回の 8 ファイルをステージし、name-status / check / 全差分と新規ファイル全文を公開情報基準で確認してから、公開用名義でローカルコミットする。認証実値・ユーザー名・接続先の追加はなく、指定された検証設定以外のノード・Pod 名はプレースホルダー。原本の転載なし。今回の設定値は利用者の明示的な作成・コミット依頼に基づく。履歴全体の公開監査と push は対象外。コミット ID と終了時の残変更はチャットで報告する。

@@ -1,0 +1,14 @@
+# 公式のリリース版 YAML を参照し、可変イメージタグだけを固定する。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/v4.3.1/deployments/multus-daemonset-thick.yml
+  - https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/v0.9.4/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
+  - https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/v0.9.4/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
+  - https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/v0.9.4/doc/crds/daemonset-install.yaml
+  - https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/v0.9.4/doc/crds/reconciler-deployment.yaml
+images:
+  - name: ghcr.io/k8snetworkplumbingwg/multus-cni
+    newTag: v4.3.1-thick
+  - name: ghcr.io/k8snetworkplumbingwg/whereabouts
+    newTag: v0.9.4

@@ -33,7 +33,7 @@ KVM / QEMU と libvirt を使用し、BCM ヘッドノードを含む 7 台の V
 | 4 | [ワーカーの LVM 構成・初回展開手順](docs/worker-storage.md) | node004 の先行展開、TopoLVM 用 VG と最小 LV、初回用・運用用 XML、再起動・OS 再展開後の保持試験 |
 | 5 | [Kubernetes 導入前の準備と実施記録](docs/kubernetes-preparation.md) | 6 ノードの OS・通信・ライセンス確認、3 ワーカーの VG 作成・運用用切替と AUTO 再起動の保持試験 |
 
-[Multus・macvlan・Whereabouts の設計と導入手順案](docs/multus-macvlan-whereabouts.md) を追加しました（実機導入は未実施）。Kubernetes・TopoLVM 本体の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
+[Multus・macvlan・Whereabouts の設計と導入手順案](docs/multus-macvlan-whereabouts.md) に bond3 用の最小手順と適用 YAML を掲載しています（実機導入は未実施）。Kubernetes・TopoLVM 本体の構築手順書は未作成です。今後の作業順は [検証状況の「次の作業」](docs/validation.md#次の作業) を参照してください。
 
 ### 構築を進めるうえで知っておくべき知見
 

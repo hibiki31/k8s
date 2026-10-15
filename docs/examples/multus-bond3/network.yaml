@@ -1,0 +1,26 @@
+# 利用者指定の検証用設定。実際の NIC・既存 IP との競合は適用前に確認する。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multus-test
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: bond3-macvlan
+  namespace: multus-test
+spec:
+  config: |-
+    {
+      "cniVersion": "0.3.1",
+      "name": "bond3-macvlan",
+      "type": "macvlan",
+      "master": "bond3",
+      "mode": "bridge",
+      "ipam": {
+        "type": "whereabouts",
+        "datastore": "kubernetes",
+        "range": "192.168.0.0/24",
+        "enable_overlapping_ranges": true
+      }
+    }

@@ -141,3 +141,5 @@ Multusの導入方法・基本CNIとの組み合わせ・セカンダリNIC設�
 ## Multus・macvlan・Whereabouts の設計資料
 
 2026-10-14 に Multus の Usage / Quickstart、CNI macvlan、Whereabouts の README / Extended configuration、Docker の Linux macvlan 制約、libvirt Network Filters を公式 Web で確認した。参照 URL・節・版の扱い・一次資料と調査手順は [設計と導入手順案](multus-macvlan-whereabouts.md) に集約する。current / master の記載であり、採用リリース・BCM との互換性・実機通信は未確認。
+
+2026-10-15 に [Multus v4.3.1 thick manifest](https://github.com/k8snetworkplumbingwg/multus-cni/blob/v4.3.1/deployments/multus-daemonset-thick.yml) と [Whereabouts v0.9.4 Installation](https://github.com/k8snetworkplumbingwg/whereabouts/blob/v0.9.4/README.md#installation) および同版の CRD・DaemonSet・reconciler を確認。公式ファイルをリモート参照し、イメージ版を固定する [導入用 Kustomization](examples/multus-bond3/addons/kustomization.yaml) を作成した。原本は Git に転載せず、適用時に取得・生成する。実機互換性は未検証。

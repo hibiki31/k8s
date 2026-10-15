@@ -66,7 +66,7 @@ BCM のネットワーク名はインストーラー上の論理名です。こ�
 | 内部ネットワークの DHCP・PXE 提供元 | BCM ヘッドノード | `Management network` と `Bootable network` は S14 で選択済み。S24 でも対応する値が `true`。サービス稼働は未確認 |
 | DHCP 動的割り当て範囲 | `172.30.65.100`～`172.30.65.199` | 当初の候補と一致する値を S14 の入力欄と S24 の `dynamicrangestart`・`dynamicrangeend` で確認。稼働後の範囲は未確認 |
 | 各ノードの DNS | BCM 導入時に設定 | 割り当て結果は未確認 |
-| Multus 用のアドレス管理 | macvlan + Whereabouts を提案。詳細は [設計案](multus-macvlan-whereabouts.md) | 2026-10-14 に方針検討。IP 範囲・親 NIC 名・導入版は未定、未適用 |
+| Multus 用のアドレス管理 | 親 `bond3`、`192.168.0.0/24`、macvlan + Whereabouts。詳細は [最小手順と YAML](multus-macvlan-whereabouts.md) | 2026-10-15 利用者指定の導入計画。Multus v4.3.1 / Whereabouts v0.9.4 の設定を作成、実機未適用 |
 
 外部ネットワークは S11・S15 では DHCP が選択されていましたが、後続の S16 では静的設定に変わっています。Summary の Nameservers はその後も空欄であるため、外部 DNS の計画値が設定されたとは扱いません。内部・外部ネットワークの MTU はそれぞれ S14・S16 で `1500` と表示されています。
 
@@ -125,7 +125,7 @@ flowchart TB
 ### 検証上の役割と未確定事項
 
 - **PXE**: コントロールプレーンとワーカーの 6 台は内部 NIC から優先起動する構成です。OS 導入後も同じ NIC をクラスタ通信に使用する計画です。
-- **Multus**: ワーカーの追加 NIC を macvlan などの親インターフェイスとして利用する想定です。追加 NIC の PXE ROM は無効との提供情報です。2026-10-14 に [macvlan + Whereabouts の設計案](multus-macvlan-whereabouts.md) を整理した。採用版・アドレス範囲は未定で、L2 と NIC の作成は Multus の導入・通信検証完了を示しません。
+- **Multus**: ワーカーの追加 NIC を macvlan などの親インターフェイスとして利用する想定です。追加 NIC の PXE ROM は無効との提供情報です。2026-10-14 に [macvlan + Whereabouts の設計案](multus-macvlan-whereabouts.md) を整理した。2026-10-15 の指定値と導入ファイルは上のアドレス管理欄を参照。bond3 の存在・slave・mode と既存仮想 NIC の対応は未確認。L2 と NIC の作成は Multus の導入・通信検証完了を示しません。
 - **TopoLVM**: 各ワーカーのローカルディスクを使用するため、専用ストレージネットワークは設けていません。
 - **Kubernetes**: Pod CIDR・Service CIDR は未決定です。外部・内部ネットワークと Multus 用アドレス範囲、および Pod CIDR と Service CIDR 相互の重複を避けて確定します。
 
